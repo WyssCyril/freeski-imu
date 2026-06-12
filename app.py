@@ -7,19 +7,19 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Passwort-Login (vorübergehend deaktiviert)
-# if "authenticated" not in st.session_state:
-#     st.session_state["authenticated"] = False
-# if not st.session_state["authenticated"]:
-#     st.markdown("### Impactmessung Park & Pipe")
-#     pw = st.text_input("Passwort", type="password")
-#     if st.button("Einloggen"):
-#         if pw == "afterbang":
-#             st.session_state["authenticated"] = True
-#             st.rerun()
-#         else:
-#             st.error("Falsches Passwort")
-#     st.stop()
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.markdown("### Impactmessung Park & Pipe")
+    pw = st.text_input("Passwort", type="password")
+    if st.button("Einloggen"):
+        if pw == "afterbang":
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Falsches Passwort")
+    st.stop()
 
 st.markdown("### Impactmessung Park & Pipe")
 
