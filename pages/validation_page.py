@@ -271,11 +271,13 @@ Pearson r = **{r:.3f}** ({r_label})
         y_corrected = y_in - bias
         corr_desc = f"Bias-Subtraktion: y − {bias:.4f} g"
 
+    # ba_corr immer berechnen (für Excel-Export)
+    ba_corr = bland_altman(x_in, y_corrected)
+    fig_before = fig_after = fig_corr2 = None
+
     # ── 5. Vorher / Nachher Vergleich ──────────────────────────────────────
     if need_bias_corr or need_prop_corr:
         st.markdown("#### Vorher / Nachher Vergleich")
-
-        ba_corr = bland_altman(x_in, y_corrected)
 
         # Kennzahlen-Tabelle
         comp_df = pd.DataFrame({
@@ -294,40 +296,49 @@ Pearson r = **{r:.3f}** ({r_label})
         })
         st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
+        fig_before = plot_bland_altman(ba,
+            title=f"Bland-Altman: IMU {sensor} vs. Kraftmessplatte — Ohne Korrektur",
+            warn_pct=warn_pct, excl_pct=excl_pct)
+        fig_after = plot_bland_altman(ba_corr,
+            title=f"Bland-Altman: IMU {sensor} vs. Kraftmessplatte — Mit Korrektur",
+            warn_pct=warn_pct, excl_pct=excl_pct)
+        fig_corr2 = plot_correlation(x_in, y_corrected,
+            "Kraftmessplatte (g)", f"IMU {sensor} (korrigiert)",
+            title=f"Korrelation: IMU {sensor} vs. Kraftmessplatte — Nach Korrektur")
+
         c_before, c_after = st.columns(2)
         with c_before:
-            st.caption("Ohne Korrektur")
-            fig_before = plot_bland_altman(ba, title="Ohne Korrektur",
-                                           warn_pct=warn_pct, excl_pct=excl_pct)
             st.plotly_chart(fig_before, use_container_width=True)
         with c_after:
-            st.caption(f"Mit Korrektur ({corr_desc})")
-            fig_after = plot_bland_altman(ba_corr, title="Mit Korrektur",
-                                          warn_pct=warn_pct, excl_pct=excl_pct)
             st.plotly_chart(fig_after, use_container_width=True)
-
-        # Korrelation nach Korrektur
-        st.caption("Korrelation nach Korrektur")
-        fig_corr2 = plot_correlation(x_in, y_corrected,
-                                     "Kraftmessplatte (g)", f"IMU korrigiert",
-                                     title="Korrelation nach Korrektur")
         st.plotly_chart(fig_corr2, use_container_width=True)
 
     # ── 6. Gesamtbeurteilung ───────────────────────────────────────────────
     st.markdown("#### Gesamtbeurteilung")
     if cv < 10 and bias_pct < 5 and not trend_sig:
-        verdict_col, verdict_txt = "success", (
-            f"Der Sensor **{sensor}** zeigt **gute Übereinstimmung** mit der Kraftmessplatte "
-            f"(CV = {cv:.1f} %, Bias = {bias:+.3f} g). Er ist ohne Korrektur für den Feldeinsatz geeignet.")
+        verdict_col = "success"
+        verdict_txt = (
+            f"✅ Der IMU-Sensor **{sensor}** misst sehr ähnlich wie die Kraftmessplatte. "
+            f"Die Abweichung beträgt im Durchschnitt nur **{bias:+.3f} g ({bias_pct:.1f} %)** — "
+            f"das ist vernachlässigbar. Der Sensor kann direkt im Feld eingesetzt werden, ohne Korrektur."
+        )
     elif cv < 20 and bias_pct < 15:
-        verdict_col, verdict_txt = "warning", (
-            f"Der Sensor **{sensor}** zeigt **akzeptable Übereinstimmung** (CV = {cv:.1f} %, Bias = {bias:+.3f} g). "
-            f"{'Nach Anwendung der empfohlenen Korrektur verbessern sich die Kennwerte.' if need_bias_corr or need_prop_corr else ''} "
-            f"Bei der Interpretation ist die Messunsicherheit zu berücksichtigen.")
+        verdict_col = "warning"
+        verdict_txt = (
+            f"⚠️ Der IMU-Sensor **{sensor}** misst ähnlich wie die Kraftmessplatte, "
+            f"weicht aber im Schnitt um **{bias:+.3f} g ({bias_pct:.1f} %)** ab. "
+            f"Die Streuung der Messwerte beträgt **{cv:.1f} %** — das ist akzeptabel. "
+            + (f"Eine Korrektur wird empfohlen, um die Genauigkeit zu verbessern. " if need_bias_corr or need_prop_corr else "")
+            + f"Die Ergebnisse sollten mit Vorsicht interpretiert werden."
+        )
     else:
-        verdict_col, verdict_txt = "error", (
-            f"Der Sensor **{sensor}** zeigt **eingeschränkte Übereinstimmung** (CV = {cv:.1f} %, Bias = {bias:+.3f} g). "
-            f"Eine direkte Vergleichbarkeit mit Referenzwerten ist nur nach Korrektur zulässig.")
+        verdict_col = "error"
+        verdict_txt = (
+            f"❌ Der IMU-Sensor **{sensor}** weicht deutlich von der Kraftmessplatte ab "
+            f"(Abweichung: **{bias:+.3f} g / {bias_pct:.1f} %**, Streuung: **{cv:.1f} %**). "
+            f"Die Messwerte sind ohne Korrektur nicht direkt mit der Kraftmessplatte vergleichbar. "
+            f"Eine Korrektur ist zwingend erforderlich."
+        )
 
     getattr(st, verdict_col)(verdict_txt)
 
@@ -359,9 +370,105 @@ KORREKTUR
 GESAMTBEURTEILUNG
 {verdict_txt.replace('**', '')}
 """
-    st.download_button("Bericht als .txt exportieren", data=export_txt.encode("utf-8"),
-                       file_name=f"Validierungsbericht_{sensor.replace(' ','_')}_{athlete}.txt",
-                       mime="text/plain")
+    # Excel-Export mit Grafiken
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Validierungsbericht"
+
+    # Hilfsfunktion: Zelle schreiben
+    def cell(row, col, value, bold=False, bg=None):
+        c = ws.cell(row=row, column=col, value=value)
+        if bold:
+            c.font = Font(bold=True)
+        if bg:
+            c.fill = PatternFill("solid", fgColor=bg)
+        return c
+
+    row = 1
+    cell(row, 1, f"Validierungsbericht: IMU {sensor} vs. Kraftmessplatte", bold=True)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    row += 1
+    cell(row, 1, f"Athlet: {ath_str}  |  Übung: {exercise}  |  n = {n_in}")
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    row += 2
+
+    # Kennzahlen
+    cell(row, 1, "Kennzahl", bold=True, bg="DDDDDD")
+    cell(row, 2, "Ohne Korrektur", bold=True, bg="DDDDDD")
+    cell(row, 3, "Mit Korrektur", bold=True, bg="DDDDDD")
+    row += 1
+    kennzahlen = [
+        ("Bias (g)",            f"{ba['bias']:+.3f}",            f"{ba_corr['bias']:+.3f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("CV (%)",              f"{ba['cv_pct']:.1f}",           f"{ba_corr['cv_pct']:.1f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("LoA obere Grenze (g)",f"{ba['loa_upper']:.3f}",        f"{ba_corr['loa_upper']:.3f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("LoA untere Grenze (g)",f"{ba['loa_lower']:.3f}",       f"{ba_corr['loa_lower']:.3f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("Typical Error (g)",   f"{ba['typical_error']:.4f}",    f"{ba_corr['typical_error']:.4f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("Pearson r",           f"{ba['r']:.3f}",                f"{ba_corr['r']:.3f}" if (need_bias_corr or need_prop_corr) else "—"),
+        ("Korrektur",           "Keine",                         corr_desc),
+        ("Gesamtbeurteilung",   verdict_txt.replace("✅ ","").replace("⚠️ ","").replace("❌ ",""), ""),
+    ]
+    for k, v1, v2 in kennzahlen:
+        cell(row, 1, k)
+        cell(row, 2, v1)
+        cell(row, 3, v2)
+        row += 1
+    row += 1
+
+    # Rohdaten
+    cell(row, 1, "Rohdaten", bold=True, bg="DDDDDD")
+    cell(row, 2, "Kraftmessplatte (g)", bold=True, bg="DDDDDD")
+    cell(row, 3, "IMU (g)", bold=True, bg="DDDDDD")
+    cell(row, 4, "Differenz (g)", bold=True, bg="DDDDDD")
+    cell(row, 5, "Mittelwert (g)", bold=True, bg="DDDDDD")
+    row += 1
+    for xi, yi in zip(x_in, y_in):
+        ws.cell(row=row, column=2, value=round(float(xi), 4))
+        ws.cell(row=row, column=3, value=round(float(yi), 4))
+        ws.cell(row=row, column=4, value=round(float(yi - xi), 4))
+        ws.cell(row=row, column=5, value=round(float((xi + yi) / 2), 4))
+        row += 1
+
+    # Spaltenbreiten
+    for col in range(1, 6):
+        ws.column_dimensions[get_column_letter(col)].width = 25
+
+    # Grafiken als Bilder einfügen (neues Sheet)
+    try:
+        ws_plots = wb.create_sheet("Grafiken")
+        img_row = 1
+        plots_to_add = [
+            (fig_before, "Bland-Altman ohne Korrektur") if (need_bias_corr or need_prop_corr) else None,
+            (fig_after,  "Bland-Altman mit Korrektur")  if (need_bias_corr or need_prop_corr) else None,
+            (fig_corr2,  "Korrelation nach Korrektur")  if (need_bias_corr or need_prop_corr) else None,
+        ]
+        for item in plots_to_add:
+            if item is None:
+                continue
+            fig_obj, title = item
+            img_bytes = fig_obj.to_image(format="png", width=700, height=450, scale=1.5)
+            img_stream = _io.BytesIO(img_bytes)
+            xl_img = XLImage(img_stream)
+            xl_img.anchor = f"A{img_row}"
+            ws_plots.add_image(xl_img)
+            img_row += 25
+    except Exception:
+        pass  # kaleido nicht verfügbar — Grafiken werden weggelassen
+
+    excel_buf = _io.BytesIO()
+    wb.save(excel_buf)
+    excel_buf.seek(0)
+    st.download_button(
+        "📥 Bericht als Excel exportieren",
+        data=excel_buf,
+        file_name=f"Validierungsbericht_{sensor.replace(' ','_')}_{athlete}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 def _cv_light(cv: float) -> str:
@@ -421,14 +528,15 @@ def _render_sensor_panel(df: pd.DataFrame, df_all: pd.DataFrame,
     p_ba, p_corr = st.tabs(["Bland-Altman", "Korrelation"])
     with p_ba:
         st.plotly_chart(
-            plot_bland_altman(ba, title=f"Bland-Altman: {sname}",
-                              warn_pct=WARN_PCT, excl_pct=EXCL_PCT),
+            plot_bland_altman(ba,
+                title=f"Bland-Altman: IMU {sname} vs. Kraftmessplatte",
+                warn_pct=WARN_PCT, excl_pct=EXCL_PCT),
             use_container_width=True)
     with p_corr:
         st.plotly_chart(
             plot_correlation(x_in, y_in,
-                             x_label="Kraftmessplatte (g)", y_label=f"IMU {sname}",
-                             title=f"Korrelation: {sname}"),
+                             x_label="Kraftmessplatte (g)", y_label=f"IMU {sname} (g)",
+                             title=f"Korrelation: IMU {sname} vs. Kraftmessplatte"),
             use_container_width=True)
 
     # Ausreisser
@@ -536,13 +644,35 @@ def show():
 
     for tab, (group_name, sensor_names) in zip(group_tabs[:-1], SENSOR_GROUPS.items()):
         with tab:
+            # Sensor-Vergleich: welcher korreliert besser?
             if len(sensor_names) == 2:
-                # Zwei Sensoren nebeneinander
-                col_left, col_right = st.columns(2)
-                for col, sname in zip([col_left, col_right], sensor_names):
-                    with col:
-                        st.subheader(sname)
-                        _render_sensor_panel(df, df_all, sname, sel_athlete, sel_exercise)
+                stats = {}
+                for sname in sensor_names:
+                    imu_col, ref_col = SENSORS[sname]
+                    sub = df[[ref_col, imu_col]].dropna()
+                    if len(sub) >= 4:
+                        ba_s = bland_altman(sub[ref_col].values.astype(float),
+                                            sub[imu_col].values.astype(float))
+                        stats[sname] = ba_s
+
+                if len(stats) == 2:
+                    s1, s2 = sensor_names
+                    r1, r2 = stats[s1]["r"], stats[s2]["r"]
+                    cv1, cv2 = stats[s1]["cv_pct"], stats[s2]["cv_pct"]
+                    better = s1 if abs(r1) >= abs(r2) else s2
+                    worse  = s2 if better == s1 else s1
+                    r_b = stats[better]["r"]
+                    r_w = stats[worse]["r"]
+                    st.info(
+                        f"**Sensor-Vergleich:** **{better}** korreliert besser mit der Kraftmessplatte "
+                        f"(r = {r_b:.3f}) als **{worse}** (r = {r_w:.3f}). "
+                        f"{'Der Unterschied ist gering.' if abs(r_b - r_w) < 0.05 else 'Der Unterschied ist deutlich.'}"
+                    )
+
+                for sname in sensor_names:
+                    st.subheader(sname)
+                    _render_sensor_panel(df, df_all, sname, sel_athlete, sel_exercise)
+                    st.divider()
             else:
                 for sname in sensor_names:
                     st.subheader(sname)

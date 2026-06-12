@@ -127,7 +127,8 @@ def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
     acc_vert = df_imu.get(axis_vert, pd.Series(np.zeros(len(df_imu))))
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.65, 0.35],
-                        subplot_titles=["accRes [g]", f"Vertikale Achse ({axis_vert})"])
+                        subplot_titles=["accRes [g]", f"Vertikale Achse ({axis_vert})"],
+                        vertical_spacing=0.08)
     fig.add_trace(go.Scatter(x=t, y=acc_res, line=dict(color="#1f77b4", width=0.8),
                              name="accRes [g]"), row=1, col=1)
     fig.add_hline(y=16, line_dash="dot", line_color="red",
@@ -155,7 +156,7 @@ def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
                 hovertemplate=f"{row['jump_id']}: {row['peak_res_g']:.2f}g, {row['flight_time_s']:.2f}s<extra></extra>"),
                 row=1, col=1)
 
-    fig.update_layout(title=title, height=480, template="plotly_white", xaxis2_title="Zeit (s)")
+    fig.update_layout(title=title, height=700, template="plotly_white", xaxis2_title="Zeit (s)")
     fig.update_xaxes(rangeslider=dict(visible=True, thickness=0.04), row=2, col=1)
     return fig
 
@@ -181,7 +182,7 @@ def _format_run_time(run_meta: dict) -> str:
 
 
 CARD_W = 300   # px pro Sprung-Karte im Scroller
-CARD_H = 220   # px Höhe der Karte
+CARD_H = 320   # px Höhe der Karte
 
 
 def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
@@ -234,7 +235,21 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
             mode="markers", marker=dict(size=10, color=color, symbol="triangle-down"),
             showlegend=False,
         ))
-        fig.add_hline(y=16, line_dash="dot", line_color="red", line_width=1)
+        # 1g Flugschwelle
+        fig.add_hline(y=1, line_dash="dot", line_color="gray", line_width=1,
+                      annotation_text="1g (Flug)", annotation_position="right",
+                      annotation_font=dict(size=8, color="gray"))
+        # 16g Threshold
+        fig.add_hline(y=16, line_dash="dot", line_color="red", line_width=1,
+                      annotation_text="16g", annotation_position="right")
+        # Absprung
+        fig.add_vline(x=to_t, line_dash="dash", line_color="green", line_width=1.5,
+                      annotation_text="Absprung", annotation_position="top left",
+                      annotation_font=dict(size=8, color="green"))
+        # Landung
+        fig.add_vline(x=la_t, line_dash="dash", line_color="orange", line_width=1.5,
+                      annotation_text="Landung", annotation_position="top right",
+                      annotation_font=dict(size=8, color="orange"))
         fig.update_layout(
             title=dict(text=title_txt, font=dict(size=11), x=0.5),
             annotations=[dict(
@@ -255,7 +270,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
     if not fig_jsons:
         return
 
-    divs   = "".join(f'<div id="jc{i}" style="min-width:{CARD_W}px;height:{CARD_H}px;"></div>'
+    divs   = "".join(f'<div id="jc{i}" style="min-width:{CARD_W}px;height:{CARD_H}px;cursor:pointer;" onclick="openModal({i})"></div>'
                      for i in range(len(fig_jsons)))
     plots  = "".join(f'Plotly.newPlot("jc{i}",JSON.parse(figs[{i}]).data,JSON.parse(figs[{i}]).layout,{{displayModeBar:false}});'
                      for i in range(len(fig_jsons)))
@@ -267,12 +282,40 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
             scrollbar-width:thin;-webkit-overflow-scrolling:touch;">
   {divs}
 </div>
+
+<!-- Modal -->
+<div id="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+     background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:8px;padding:10px;width:90%;max-width:900px;position:relative;">
+    <button onclick="closeModal()" style="position:absolute;top:8px;right:12px;font-size:20px;
+            border:none;background:none;cursor:pointer;">✕</button>
+    <div id="modal-plot" style="width:100%;height:500px;"></div>
+  </div>
+</div>
+
 <script>
 const figs={figs_json};
 {plots}
+
+function openModal(i) {{
+  const modal = document.getElementById('modal');
+  modal.style.display = 'flex';
+  const data = JSON.parse(figs[i]);
+  data.layout.width = null;
+  data.layout.height = 480;
+  data.layout.title.font = {{size: 14}};
+  Plotly.newPlot('modal-plot', data.data, data.layout, {{displayModeBar: true}});
+}}
+
+function closeModal() {{
+  document.getElementById('modal').style.display = 'none';
+}}
+
+document.getElementById('modal').addEventListener('click', function(e) {{
+  if (e.target === this) closeModal();
+}});
 </script>
 """
-    total_w = min(len(fig_jsons) * (CARD_W + 12), 2400)
     components.html(html, height=CARD_H + 40, scrolling=False)
 
 
@@ -323,20 +366,30 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     _jump_scroller(df_imu, jumps_df, axis_vert, st.session_state[label_key])
 
     # ── Landungsart-Tabelle ───────────────────────────────────────────────
+    comment_key = f"comments_{key}_{sess_id}_{run_id}"
+    if comment_key not in st.session_state:
+        st.session_state[comment_key] = {}
+
     st.markdown("**Landungsart zuweisen:**")
-    hdr = st.columns([1, 2, 2, 2, 2, 1, 2])
-    for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart"]):
+    hdr = st.columns([1, 2, 2, 2, 2, 1, 2, 3])
+    for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
         h.write(f"**{lbl}**")
 
     for _, row in jumps_df.iterrows():
         jid = row["jump_id"]
-        c0, c1, c2, c3, c4, c5, c6 = st.columns([1, 2, 2, 2, 2, 1, 2])
+        c0, c1, c2, c3, c4, c5, c6, c7 = st.columns([1, 2, 2, 2, 2, 1, 2, 3])
         c0.write(jid)
         c1.write(f"{row['flight_time_s']:.3f}")
         c2.write(f"{'⚠️ ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
         c3.write(f"{row.get('time_to_peak_s', '—')}")
         c4.write(f"{row.get('rfd_g_per_s', '—')}")
         c5.write("⚠️" if row.get("clipped_16g") else "✓")
+        saved_comment = st.session_state[comment_key].get(jid, "")
+        new_comment = c7.text_input("", value=saved_comment, placeholder="Kommentar...",
+                                     key=f"cmt_{key}_{sess_id}_{run_id}_{jid}",
+                                     label_visibility="collapsed")
+        if new_comment != saved_comment:
+            st.session_state[comment_key][jid] = new_comment
         saved = st.session_state[label_key].get(jid, "")
         new_label = c6.selectbox(
             "", ["", "vorwärts", "switch"],
@@ -434,27 +487,35 @@ def show():
         st.warning("Zuerst Daten laden (Tab 'Daten laden').")
         return
 
-    # ── Gruppierung: Athlet + Datum + Ort ────────────────────────────────
-    groups: dict[str, list[str]] = {}
+    # ── Athleten-Auswahl ─────────────────────────────────────────────────
+    # Alle verfügbaren Athleten ermitteln
+    athlete_groups: dict[str, list[str]] = {}
     for k, s in sessions_loaded.items():
         m = s.get("meta")
         if m:
             gkey = f"{m.athlete_code}  |  {m.date}  |  {m.location}"
         else:
             gkey = k
-        groups.setdefault(gkey, []).append(k)
+        athlete_groups.setdefault(gkey, []).append(k)
 
-    group_names = sorted(groups.keys())
-    sel_group = st.selectbox("Athlet / Datum / Ort", group_names)
-    group_keys = groups[sel_group]   # alle Sensor-Keys dieser Gruppe
+    group_names = sorted(athlete_groups.keys())
+    sel_groups = st.multiselect("Athleten auswählen", group_names, default=group_names[:1])
+    if not sel_groups:
+        st.info("Mindestens einen Athleten auswählen.")
+        return
 
-    # ── Sensor-Auswahl innerhalb der Gruppe ──────────────────────────────
+    # Alle Sensor-Keys der gewählten Athleten sammeln
+    group_keys = [k for g in sel_groups for k in athlete_groups[g]]
+
+    # ── Sensor-Auswahl ───────────────────────────────────────────────────
     def _pos_label(k):
         m = sessions_loaded[k].get("meta")
-        return m.position_label if m else k
+        if m:
+            return f"{m.athlete_code} | {m.position_label}"
+        return k
 
     sel_keys = st.multiselect(
-        "Sensor-Datei wählen",
+        "Sensoren wählen",
         options=group_keys,
         default=group_keys,
         format_func=_pos_label,
@@ -465,17 +526,17 @@ def show():
 
     with st.expander("Erkennungs-Parameter anpassen"):
         c1, c2, c3, c4 = st.columns(4)
-        th_vert  = c1.slider("Schwelle Vert. (g)",  0.3, 0.9, 0.60, 0.05)
-        th_res   = c2.slider("Schwelle Res. (g)",   0.3, 0.9, 0.70, 0.05)
-        th_cross = c3.slider("Crossing (g)",        0.5, 2.0, 1.0,  0.1)
-        min_dur  = c4.slider("Min. Flugzeit (s)",   0.5, 3.0, 1.2,  0.1)
+        th_vert  = c1.slider("G-Schwelle vertikal (g)",     0.3, 0.9, 0.60, 0.05)
+        th_res   = c2.slider("G-Schwelle resultierend (g)", 0.3, 0.9, 0.70, 0.05)
+        th_cross = c3.slider("G-Schwelle Crossing (g)",     0.5, 2.0, 1.0,  0.1)
+        min_dur  = c4.slider("Minimale Flugzeit (s)",        0.5, 3.0, 1.2,  0.1)
 
-        c5, c6, c7, c8, c9 = st.columns(5)
-        v_start          = c5.number_input("v_start (km/h)",        value=7.0,  step=0.5)
-        v_hold           = c6.number_input("v_hold (km/h)",         value=1.5,  step=0.5)
-        alt_rise_end     = c7.number_input("alt_rise_end (m)",      value=20.0, step=5.0)
-        alt_drop_min     = c8.number_input("alt_drop_min (m)",      value=30.0, step=5.0)
-        run_duration_min = c9.number_input("run_duration_min (s)",  value=15.0, step=5.0)
+    # Fixe Parameter
+    v_start          = 7.0
+    v_hold           = 1.5
+    alt_rise_end     = 20.0
+    alt_drop_min     = 30.0
+    run_duration_min = 15.0
 
     params = dict(th_vert=th_vert, th_res=th_res, th_cross=th_cross, min_dur=min_dur,
                   v_start=v_start, v_hold=v_hold, alt_rise_end=alt_rise_end,
@@ -570,7 +631,7 @@ def show():
             alt        = run_meta.get("alt_drop_m", "—")
             start_time = _format_run_time(run_meta)
             time_str   = f"  🕐 {start_time}" if start_time else ""
-            exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Sprung{'e' if n_jumps != 1 else ''}  "
+            exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
                           + (f"| {dur} s  | Δ{alt} m" if run_meta else ""))
 
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):

@@ -2,13 +2,14 @@
 Daten laden: Drag & Drop oder aus festem Ordner.
 """
 import io
+import datetime
 import streamlit as st
 import pandas as pd
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from utils.admos_parser import (parse_filename, load_imu_raw, load_gnss_raw,
                                 find_csv_pairs, classify_sensor_file,
-                                sensor_file_base, DATA_FOLDER)
+                                sensor_file_base, DATA_FOLDER, SensorMeta)
 
 
 def show():
@@ -44,13 +45,11 @@ def show():
             st.session_state["loaded_sessions"] = existing
             status.success(f"{len(loaded)} Sensor-Dateien geladen.")
 
-    col_info.caption(f"Ordner: `{DATA_FOLDER}`")
 
-    # ── Drag & Drop ────────────────────────────────────────────────────────
+    # ── Manueller Upload mit Metadaten ─────────────────────────────────────
     st.divider()
-    st.subheader("Oder Dateien hochladen")
-    st.caption("Einzelne CSV-Dateien auswählen oder per Drag & Drop (max. 700 MB pro Datei, keine Ordner). "
-               "IMU und GNSS desselben Sensors zusammen hochladen.")
+    st.subheader("Dateien hochladen")
+    st.caption("CSV-Dateien hochladen und Messungs-Infos eingeben.")
 
     uploaded = st.file_uploader(
         "CSV-Dateien", type=["csv"],
@@ -63,7 +62,7 @@ def show():
         for f in uploaded:
             kind = classify_sensor_file(f.name)
             if kind is None:
-                st.warning(f"Nicht erkannt (erwartet *_IMU.csv / *_imu.csv / *_imuData.csv etc.): **{f.name}**")
+                st.warning(f"Nicht erkannt (erwartet *_IMU.csv / *_GNSS.csv etc.): **{f.name}**")
                 continue
             base = sensor_file_base(f.name)
             key = f"{kind}_bytes"
@@ -71,45 +70,93 @@ def show():
                 f.seek(0)
                 staged.setdefault(base, {})[key] = f.read()
         st.session_state["_upload_staged"] = staged
-        if staged:
-            st.caption(f"{len(staged)} Sensor-Paare erkannt: {', '.join(staged.keys())}")
 
     staged = st.session_state.get("_upload_staged", {})
-    if staged and st.button("Hochgeladene Dateien laden", type="secondary"):
-        loaded = {}
-        errors = []
-        items = list(staged.items())
-        progress = st.progress(0, text="Lade Dateien …")
-        status = st.empty()
-        for i, (base, files) in enumerate(items):
-            pct = int((i + 1) / len(items) * 100)
-            progress.progress(pct, text=f"Lade {i+1}/{len(items)}: {base}")
+
+    if staged:
+        st.markdown(f"**{len(staged)} Datei(en) bereit** — Infos aus Dateiname erkannt, bitte prüfen:")
+
+        pos_options = ["Bauch", "Fuss rechts", "Fuss links"]
+        pos_label_map = {"Bauch": "Bauch", "Fuss_re": "Fuss rechts", "Fuss_li": "Fuss links",
+                         "FussRe": "Fuss rechts", "FussLi": "Fuss links",
+                         "fuss_re": "Fuss rechts", "fuss_li": "Fuss links"}
+
+        for base in list(staged.keys()):
+            # Metadaten aus Dateiname lesen
             try:
                 meta = parse_filename(base + "_imuData.csv")
-                imu_df = gnss_df = None
-                if "imu_bytes" in files:
-                    imu_df = pd.read_csv(io.BytesIO(files["imu_bytes"]))
-                if "gnss_bytes" in files:
-                    gnss_df = pd.read_csv(io.BytesIO(files["gnss_bytes"]))
-                if imu_df is not None or gnss_df is not None:
-                    loaded[base] = {"imu": imu_df, "gnss": gnss_df,
-                                    "imu_path": None, "gnss_path": None, "meta": meta}
-            except Exception as e:
-                errors.append(f"{base}: {e}")
-        progress.empty()
-        if loaded:
-            existing = st.session_state.get("loaded_sessions", {})
-            existing.update(loaded)
-            st.session_state["loaded_sessions"] = existing
-            st.session_state["_upload_staged"] = {}
-            for err in errors:
-                st.warning(f"Fehler: {err}")
-            st.rerun()
-        else:
-            for err in errors:
-                st.warning(f"Fehler: {err}")
-            if not errors:
-                st.warning("Keine Dateien geladen — prüfe die Dateinamen.")
+                try:
+                    default_date = datetime.date(int(meta.date[:4]), int(meta.date[4:6]), int(meta.date[6:8]))
+                except Exception:
+                    default_date = datetime.date.today()
+                default_ort = meta.location or ""
+                default_athlet = meta.athlete_code or ""
+                default_pos = pos_label_map.get(meta.position, "Bauch")
+            except Exception:
+                default_date = datetime.date.today()
+                default_ort = ""
+                default_athlet = ""
+                default_pos = "Bauch"
+
+            with st.expander(f"📄 {base}", expanded=True):
+                c1, c2, c3, c4 = st.columns(4)
+                datum = c1.date_input("Datum", value=default_date, key=f"datum_{base}")
+                ort = c2.text_input("Ort", value=default_ort, placeholder="z.B. Laax", key=f"ort_{base}")
+                athlet = c3.text_input("Athlet", value=default_athlet, placeholder="z.B. 01", key=f"athlet_{base}")
+                pos_idx = pos_options.index(default_pos) if default_pos in pos_options else 0
+                position = c4.selectbox("Position", pos_options, index=pos_idx, key=f"pos_{base}")
+
+        if st.button("Hochgeladene Dateien laden", type="primary"):
+            loaded = {}
+            errors = []
+            for base, files in staged.items():
+                try:
+                    datum = st.session_state.get(f"datum_{base}", datetime.date.today())
+                    ort = st.session_state.get(f"ort_{base}", "Unbekannt") or "Unbekannt"
+                    athlet = st.session_state.get(f"athlet_{base}", "00") or "00"
+                    position = st.session_state.get(f"pos_{base}", "Bauch")
+
+                    pos_map = {"Bauch": "Bauch", "Fuss rechts": "Fuss_re", "Fuss links": "Fuss_li"}
+                    pos_key = pos_map.get(position, position)
+
+                    date_str = datum.strftime("%Y%m%d")
+                    new_key = f"{date_str}_{ort}_{athlet}_{pos_key}"
+
+                    meta = SensorMeta(
+                        filename=f"{new_key}_imuData.csv",
+                        date=date_str,
+                        location=ort,
+                        sensor_id=athlet,
+                        athlete_code=athlet,
+                        position=pos_key,
+                        position_label=position,
+                    )
+
+                    imu_df = gnss_df = None
+                    if "imu_bytes" in files:
+                        imu_df = pd.read_csv(io.BytesIO(files["imu_bytes"]))
+                    if "gnss_bytes" in files:
+                        gnss_df = pd.read_csv(io.BytesIO(files["gnss_bytes"]))
+
+                    if imu_df is not None or gnss_df is not None:
+                        loaded[new_key] = {"imu": imu_df, "gnss": gnss_df,
+                                           "imu_path": None, "gnss_path": None, "meta": meta}
+                except Exception as e:
+                    errors.append(f"{base}: {e}")
+
+            if loaded:
+                existing = st.session_state.get("loaded_sessions", {})
+                existing.update(loaded)
+                st.session_state["loaded_sessions"] = existing
+                st.session_state["_upload_staged"] = {}
+                for err in errors:
+                    st.warning(f"Fehler: {err}")
+                st.rerun()
+            else:
+                for err in errors:
+                    st.warning(f"Fehler: {err}")
+                if not errors:
+                    st.warning("Keine Dateien geladen — prüfe die Dateinamen.")
 
     # ── Übersicht geladener Daten ──────────────────────────────────────────
     sessions = st.session_state.get("loaded_sessions", {})
@@ -122,7 +169,6 @@ def show():
 
     group_by = st.radio("Gruppieren nach", ["Athlet", "Testtag", "Ort"], horizontal=True)
 
-    # Übersicht aufbauen
     rows = []
     for key, s in sessions.items():
         m = s["meta"]
@@ -139,7 +185,6 @@ def show():
 
     group_col = {"Athlet": "Athlet", "Testtag": "Datum", "Ort": "Ort"}[group_by]
 
-    # Gleiche Athletennummer = gleicher Athlet → nach Nummer gruppieren
     if group_by == "Athlet":
         st.caption("Dateien mit gleicher Athleten-Nummer werden zusammengefasst.")
 
@@ -147,7 +192,6 @@ def show():
         n = len(grp_df)
         with st.expander(f"{group_col}: **{grp_val}** — {n} Datei{'en' if n != 1 else ''}", expanded=False):
 
-            # Tabelle mit Löschen-Buttons pro Zeile
             header = st.columns([2, 2, 2, 1, 1, 1])
             for h, lbl in zip(header, ["Datum", "Ort", "Position", "GNSS", "Sensor", "Löschen"]):
                 h.markdown(f"**{lbl}**")

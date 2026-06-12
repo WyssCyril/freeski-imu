@@ -18,7 +18,7 @@ PARAMS = {
 }
 
 
-def _boxplot(data_dict: dict, param: str, title: str) -> go.Figure:
+def _boxplot(data_dict: dict, param: str, title: str, show_points: bool = True) -> go.Figure:
     """Boxplot mit einem Trace pro Gruppe."""
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
     fig = go.Figure()
@@ -28,7 +28,8 @@ def _boxplot(data_dict: dict, param: str, title: str) -> go.Figure:
         fig.add_trace(go.Box(
             y=vals, name=name,
             marker_color=colors[i % len(colors)],
-            boxpoints="all", jitter=0.3, pointpos=-1.5,
+            boxpoints="all" if show_points else False,
+            jitter=0.3, pointpos=0,
         ))
     fig.update_layout(title=title, yaxis_title=PARAMS.get(param, param),
                       template="plotly_white", height=380)
@@ -55,7 +56,19 @@ def show():
     n_total = len(all_jumps)
     n_clipped = int(all_jumps.get("clipped_16g", pd.Series([False]*n_total)).sum())
 
+    # Totals
+    total_flight = all_jumps["flight_time_s"].dropna().sum() if "flight_time_s" in all_jumps.columns else 0
+    total_impulse = all_jumps["impulse_net_g_s"].dropna().sum() if "impulse_net_g_s" in all_jumps.columns else None
+    total_peak = all_jumps["peak_res_g"].dropna().sum() if "peak_res_g" in all_jumps.columns else None
+
     st.caption(f"Gesamt: **{n_total}** Sprünge | Geclippt (16g): **{n_clipped}**")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Gesamte Flugzeit", f"{total_flight:.1f} s")
+    if total_impulse is not None:
+        c2.metric("Aufaddierter Impuls (Load)", f"{total_impulse:.2f} g·s")
+    if total_peak is not None:
+        c3.metric("Aufaddierte Peak-g", f"{total_peak:.1f} g")
 
     # Zusammenfassungstabelle
     summary_rows = []
@@ -82,8 +95,9 @@ def show():
         format_func=lambda k: PARAMS[k],
         key="stats_param_all",
     )
+    show_pts = st.checkbox("Einzelpunkte anzeigen", value=True, key="show_pts_all")
     fig_all = _boxplot({"Alle Sprünge": all_jumps[sel_param_all].dropna().values},
-                       sel_param_all, PARAMS[sel_param_all])
+                       sel_param_all, PARAMS[sel_param_all], show_points=show_pts)
     st.plotly_chart(fig_all, use_container_width=True)
 
     # ── Vorwärts vs. Switch (nur wenn Labels vorhanden) ───────────────────
@@ -131,6 +145,7 @@ def show():
         format_func=lambda k: PARAMS[k],
         key="stats_param_grp",
     )
+    show_pts_grp = st.checkbox("Einzelpunkte anzeigen", value=True, key="show_pts_grp")
     fig_grp = _boxplot(
         {
             "vorwärts": fwd[sel_param_grp].dropna().values,
@@ -138,5 +153,6 @@ def show():
         },
         sel_param_grp,
         f"{PARAMS[sel_param_grp]}: Vorwärts vs. Switch",
+        show_points=show_pts_grp,
     )
     st.plotly_chart(fig_grp, use_container_width=True)
