@@ -1,0 +1,16 @@
+# Messdaten (zu gross / sensibel)
+*.csv
+*.xlsx
+*.xls
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Streamlit
+.streamlit/secrets.toml
+
+# macOS
+.DS_Store
