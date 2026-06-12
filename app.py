@@ -24,7 +24,7 @@ if not st.session_state["authenticated"]:
 
 st.markdown("### Impactmessung Park & Pipe")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed", "🔬 Validierung"])
+tab1, tab2, tab3 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed"])
 
 with tab1:
     from pages import import_page
@@ -40,7 +40,3 @@ with tab2:
 with tab3:
     from pages import gnss_page
     gnss_page.show()
-
-with tab4:
-    from pages import validation_page
-    validation_page.show()
