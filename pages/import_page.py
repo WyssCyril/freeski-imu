@@ -59,14 +59,17 @@ def show():
     )
 
     if uploaded:
-        staged: dict[str, dict] = {}
+        staged: dict[str, dict] = st.session_state.get("_upload_staged", {})
         for f in uploaded:
             kind = classify_sensor_file(f.name)
             if kind is None:
                 st.warning(f"Nicht erkannt (erwartet *_IMU.csv / *_imu.csv / *_imuData.csv etc.): **{f.name}**")
                 continue
             base = sensor_file_base(f.name)
-            staged.setdefault(base, {})[f"{kind}_bytes"] = f.read()
+            key = f"{kind}_bytes"
+            if base not in staged or key not in staged[base]:
+                f.seek(0)
+                staged.setdefault(base, {})[key] = f.read()
         st.session_state["_upload_staged"] = staged
         if staged:
             st.caption(f"{len(staged)} Sensor-Paare erkannt: {', '.join(staged.keys())}")
@@ -88,7 +91,7 @@ def show():
                     imu_df = pd.read_csv(io.BytesIO(files["imu_bytes"]))
                 if "gnss_bytes" in files:
                     gnss_df = pd.read_csv(io.BytesIO(files["gnss_bytes"]))
-                if imu_df is not None:
+                if imu_df is not None or gnss_df is not None:
                     loaded[base] = {"imu": imu_df, "gnss": gnss_df,
                                     "imu_path": None, "gnss_path": None, "meta": meta}
             except Exception as e:
@@ -99,9 +102,14 @@ def show():
             existing.update(loaded)
             st.session_state["loaded_sessions"] = existing
             st.session_state["_upload_staged"] = {}
-            status.success(f"{len(loaded)} Dateien geladen.")
-        for err in errors:
-            st.warning(f"Fehler: {err}")
+            for err in errors:
+                st.warning(f"Fehler: {err}")
+            st.rerun()
+        else:
+            for err in errors:
+                st.warning(f"Fehler: {err}")
+            if not errors:
+                st.warning("Keine Dateien geladen — prüfe die Dateinamen.")
 
     # ── Übersicht geladener Daten ──────────────────────────────────────────
     sessions = st.session_state.get("loaded_sessions", {})

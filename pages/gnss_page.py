@@ -237,11 +237,15 @@ def show():
         # Farbliste für jeden Punkt
         colors = [_speed_color(*rgb, float(s)) for s in speed_norm]
 
-        # Scattermapbox-Trace (Punkte, da Segmentfärbung keine Linie unterstützt)
+        # Scattermapbox-Trace (Linie + Punkte)
         map_traces.append(go.Scattermapbox(
             lat=df_d["latitude [deg]"].tolist(),
             lon=df_d["longitude [deg]"].tolist(),
-            mode="markers",
+            mode="lines+markers",
+            line=dict(
+                width=2,
+                color=f"rgb({rgb[0]},{rgb[1]},{rgb[2]})",
+            ),
             marker=dict(
                 size=4,
                 color=[f"rgb({int(rgb[0]*f)},{int(rgb[1]*f)},{int(rgb[2]*f)})"
@@ -317,8 +321,10 @@ def show():
     st.plotly_chart(fig_speed, use_container_width=True, config={"scrollZoom": True})
 
     # ── Höhenprofil ───────────────────────────────────────────────────────
-    has_alt = any("altitude [m]" in (sess.get("gnss") or pd.DataFrame()).columns
-                  for sess in filtered.values() if sess.get("gnss") is not None)
+    has_alt = any(
+        sess.get("gnss") is not None and "altitude [m]" in sess["gnss"].columns
+        for sess in filtered.values()
+    )
     if has_alt:
         st.subheader("Höhenprofil")
         fig_alt = go.Figure()
