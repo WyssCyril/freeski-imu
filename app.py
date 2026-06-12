@@ -24,7 +24,14 @@ if not st.session_state["authenticated"]:
 
 st.markdown("### Impactmessung Park & Pipe")
 
-tab1, tab2, tab3 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed"])
+import socket
+is_local = socket.gethostname() != "streamlit"
+
+if is_local:
+    tab1, tab2, tab3, tab4 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed", "🔬 Validierung"])
+else:
+    tab1, tab2, tab3 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed"])
+    tab4 = None
 
 with tab1:
     from pages import import_page
@@ -40,3 +47,8 @@ with tab2:
 with tab3:
     from pages import gnss_page
     gnss_page.show()
+
+if tab4 is not None:
+    with tab4:
+        from pages import validation_page
+        validation_page.show()
