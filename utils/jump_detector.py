@@ -110,7 +110,8 @@ def compute_rotation(df_raw: pd.DataFrame, takeoff_idx: int, landing_idx: int) -
     net_dominant = float(np.sum(G[:, dominant_axis_idx]) * dt)
     direction = "links" if net_dominant > 0 else "rechts"
 
-    rotations = round(total_deg / 360, 1)
+    # Auf nächstes 0.5 runden (Tricks werden gestanden → immer 180°-Schritte)
+    rotations = round(round(total_deg / 360 * 2) / 2, 1)
 
     return {
         "rotations": rotations,

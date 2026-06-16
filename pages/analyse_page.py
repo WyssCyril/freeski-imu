@@ -552,7 +552,7 @@ def show():
     results: dict[str, dict] = {}
     for key in sel_keys:
         sess = sessions_loaded[key]
-        cache_key = f"pipeline_v3_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v4_{key}_{'_'.join(str(v) for v in params.values())}"
         if cache_key not in st.session_state:
             raw_df = _get_raw_df(sess)
             if raw_df is None:
@@ -626,7 +626,7 @@ def show():
             continue
 
         st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
-        cache_key = f"pipeline_v3_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v4_{key}_{'_'.join(str(v) for v in params.values())}"
 
         for run_id in run_ids:
             run_data   = sessions_dict[sel_session]["runs"][run_id]
