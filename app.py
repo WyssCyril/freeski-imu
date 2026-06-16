@@ -7,19 +7,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+import socket
+_is_local = socket.gethostname() != "streamlit"
 
-if not st.session_state["authenticated"]:
-    st.markdown("### Impactmessung Park & Pipe")
-    pw = st.text_input("Passwort", type="password")
-    if st.button("Einloggen"):
-        if pw == "afterbang":
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Falsches Passwort")
-    st.stop()
+if not _is_local:
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+    if not st.session_state["authenticated"]:
+        st.markdown("### Impactmessung Park & Pipe")
+        pw = st.text_input("Passwort", type="password")
+        if st.button("Einloggen"):
+            if pw == "afterbang":
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Falsches Passwort")
+        st.stop()
 
 st.markdown("### Impactmessung Park & Pipe")
 
@@ -52,10 +55,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-import socket
-is_local = socket.gethostname() != "streamlit"
-
-if is_local:
+if _is_local:
     tab1, tab2, tab3, tab4 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed", "🔬 Validierung"])
 else:
     tab1, tab2, tab3 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Speed"])

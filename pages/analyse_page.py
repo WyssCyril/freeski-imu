@@ -219,7 +219,10 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         la_t   = float(t_all[min(int(row["landing_idx"]),  len(t_all)-1)])
 
         color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
-        title_txt = f"{jid}  {peak:.1f}g  {flight:.2f}s{'  ⚠️' if clipped else ''}"
+        rot = row.get("rotations")
+        rot_dir = row.get("rotation_dir", "")
+        rot_str = f"  {rot}x {rot_dir}" if rot is not None else ""
+        title_txt = f"{jid}  {peak:.1f}g  {flight:.2f}s{rot_str}{'  ⚠️' if clipped else ''}"
         lt_label  = lt if lt else "—"
 
         fig = go.Figure()
@@ -371,27 +374,30 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         st.session_state[comment_key] = {}
 
     st.markdown("**Landungsart zuweisen:**")
-    hdr = st.columns([1, 2, 2, 2, 2, 1, 2, 3])
-    for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
+    hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 2, 3])
+    for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Rotation (est.)", "Landungsart", "Kommentar"]):
         h.write(f"**{lbl}**")
 
     for _, row in jumps_df.iterrows():
         jid = row["jump_id"]
-        c0, c1, c2, c3, c4, c5, c6, c7 = st.columns([1, 2, 2, 2, 2, 1, 2, 3])
+        c0, c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 2, 3])
         c0.write(jid)
         c1.write(f"{row['flight_time_s']:.3f}")
         c2.write(f"{'⚠️ ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
         c3.write(f"{row.get('time_to_peak_s', '—')}")
         c4.write(f"{row.get('rfd_g_per_s', '—')}")
         c5.write("⚠️" if row.get("clipped_16g") else "✓")
+        rot = row.get("rotations")
+        rot_dir = row.get("rotation_dir", "")
+        c6.write(f"{rot}x {rot_dir}" if rot is not None else "—")
         saved_comment = st.session_state[comment_key].get(jid, "")
-        new_comment = c7.text_input("", value=saved_comment, placeholder="Kommentar...",
+        new_comment = c8.text_input("", value=saved_comment, placeholder="Kommentar...",
                                      key=f"cmt_{key}_{sess_id}_{run_id}_{jid}",
                                      label_visibility="collapsed")
         if new_comment != saved_comment:
             st.session_state[comment_key][jid] = new_comment
         saved = st.session_state[label_key].get(jid, "")
-        new_label = c6.selectbox(
+        new_label = c7.selectbox(
             "", ["", "vorwärts", "switch"],
             index=["", "vorwärts", "switch"].index(saved) if saved in ["", "vorwärts", "switch"] else 0,
             key=f"lb_{key}_{sess_id}_{run_id}_{jid}",
