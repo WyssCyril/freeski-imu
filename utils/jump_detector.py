@@ -59,30 +59,58 @@ def detect_jumps(df_raw: pd.DataFrame,
 def compute_rotation(df_raw: pd.DataFrame, takeoff_idx: int, landing_idx: int) -> dict:
     """
     Schätzt Rotationen während der Flugphase aus Gyroskopdaten.
-    Methode: Integration der resultierenden Winkelgeschwindigkeit (dps → Grad total).
-    Richtung: Vorzeichen der dominanten Achse (gyrZ für Bauch-Sensor ≈ Yaw).
+    Methode: PCA auf Gyro-Daten der Flugphase → dominante Spin-Achse bestimmen,
+    dann Projektion und Integration entlang dieser Achse.
+    Vorteil: Körperneigungen und Vorwärtskippen werden herausgefiltert.
     """
     gyr_cols = [c for c in ["gyrX [dps]", "gyrY [dps]", "gyrZ [dps]"] if c in df_raw.columns]
-    if not gyr_cols or landing_idx <= takeoff_idx:
+    if len(gyr_cols) < 3 or landing_idx <= takeoff_idx:
         return {"rotations": None, "direction": None, "total_deg": None}
 
     i0 = max(0, takeoff_idx)
     i1 = min(len(df_raw) - 1, landing_idx)
     seg = df_raw.iloc[i0:i1 + 1]
+    G = seg[gyr_cols].values  # shape (n, 3)
+
+    if len(G) < 5:
+        return {"rotations": None, "direction": None, "total_deg": None}
 
     dt = 1.0 / SAMPLE_RATE
 
-    # Gesamtrotation = Integral des Betrags (alle Achsen)
-    gyr_res = np.sqrt(sum(seg[c].values ** 2 for c in gyr_cols))
-    total_deg = float(np.sum(gyr_res) * dt)
-    rotations = round(total_deg / 360, 1)
+    # Schritt 1: Spin-Achse = Richtung des mittleren Gyro-Vektors
+    # (dominante Drehachse während der Flugphase)
+    mean_gyr = G.mean(axis=0)
+    norm = np.linalg.norm(mean_gyr)
+    if norm < 1.0:
+        # Zu wenig Rotation — kein erkennbarer Spin
+        return {"rotations": 0.0, "direction": "—", "total_deg": 0.0}
+    spin_axis = mean_gyr / norm  # Einheitsvektor
 
-    # Richtung: dominante Achse mit höchstem integriertem Absolutwert
-    # Für Bauch-Sensor ≈ gyrZ ist Yaw (Körperdrehung links/rechts)
-    # Positive Werte = links, negative = rechts (AdMos-Konvention)
-    dominant_col = max(gyr_cols, key=lambda c: abs(float(np.sum(seg[c].values) * dt)))
-    net_angle = float(np.sum(seg[dominant_col].values) * dt)
-    direction = "links" if net_angle > 0 else "rechts"
+    # Schritt 2: PCA auf zentrierten Daten für Feinkorrektur der Achse
+    # (kombiniert mittlere Richtung mit Hauptvarianz-Richtung)
+    G_centered = G - mean_gyr
+    if G_centered.std() > 0.5:
+        cov = np.cov(G_centered.T)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+        pca_axis = eigenvectors[:, np.argmax(eigenvalues)]
+        # Vorzeichen der PCA-Achse an mittleren Vektor angleichen
+        if np.dot(pca_axis, spin_axis) < 0:
+            pca_axis = -pca_axis
+        # Gewichtete Kombination: 70% Mittelwert, 30% PCA
+        spin_axis = 0.7 * spin_axis + 0.3 * pca_axis
+        spin_axis = spin_axis / np.linalg.norm(spin_axis)
+
+    # Schritt 3: Projektion auf Spin-Achse und Integration
+    projected = G @ spin_axis
+    total_deg = abs(float(np.sum(np.abs(projected)) * dt))  # Gesamtrotation
+
+    # Richtung: Vorzeichen der dominanten Original-Achse (nicht der projizierten)
+    # → robust gegen Vorzeichenambiguität des Eigenvektors
+    dominant_axis_idx = np.argmax(np.abs(mean_gyr))
+    net_dominant = float(np.sum(G[:, dominant_axis_idx]) * dt)
+    direction = "links" if net_dominant > 0 else "rechts"
+
+    rotations = round(total_deg / 360, 1)
 
     return {
         "rotations": rotations,
