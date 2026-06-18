@@ -195,12 +195,18 @@ def show():
         })
     df_overview = pd.DataFrame(rows)
 
-    # Athleten-Filter
+    # Athleten-Filter — Default immer alle, Key enthält aktuelle Athleten-Liste
     all_athletes = sorted(df_overview["Athlet"].unique())
+    filter_key = "import_athlete_filter"
+    # Wenn neue Athleten dazugekommen sind → Filter zurücksetzen
+    stored = st.session_state.get(filter_key, [])
+    if not stored or not all(a in all_athletes for a in stored):
+        st.session_state[filter_key] = all_athletes
     sel_athletes = st.multiselect(
-        "Athleten anzeigen", all_athletes, default=all_athletes,
-        key="import_athlete_filter",
+        "Athleten anzeigen", all_athletes, key=filter_key,
     )
+    if not sel_athletes:
+        sel_athletes = all_athletes
     df_overview = df_overview[df_overview["Athlet"].isin(sel_athletes)]
 
     n_total = len(sessions)
