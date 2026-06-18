@@ -114,16 +114,17 @@ def show():
                 continue
             base = sensor_file_base(f.name)
             bkey = f"{kind}_bytes"
-            if base not in staged or bkey not in staged[base]:
+            is_new = base not in staged or bkey not in staged[base]
+            if is_new:
                 f.seek(0)
                 staged.setdefault(base, {})[bkey] = f.read()
-                # Metadaten immer aus Dateiname setzen (überschreibt alte leere Werte)
-                m = _meta_from_base(base)
-                st.session_state[f"datum_{base}"]  = m["date"]
-                st.session_state[f"ort_{base}"]    = m["ort"]
-                st.session_state[f"athlet_{base}"] = m["athlet"]
-                st.session_state[f"pos_{base}"]    = m["pos"]
                 newly_added.append(base)
+            # Metadaten immer aus Dateiname setzen — bei jedem Render aktuell halten
+            m = _meta_from_base(base)
+            st.session_state[f"datum_{base}"]  = m["date"]
+            st.session_state[f"ort_{base}"]    = m["ort"]
+            st.session_state[f"athlet_{base}"] = m["athlet"]
+            st.session_state[f"pos_{base}"]    = m["pos"]
         st.session_state["_upload_staged"] = staged
 
         # Alle staged Einträge anzeigen — kompakt, editierbar
