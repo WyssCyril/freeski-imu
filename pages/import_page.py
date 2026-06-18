@@ -117,12 +117,12 @@ def show():
             if base not in staged or bkey not in staged[base]:
                 f.seek(0)
                 staged.setdefault(base, {})[bkey] = f.read()
-                # Defaults vorbelegen falls noch nicht gesetzt
+                # Metadaten immer aus Dateiname setzen (überschreibt alte leere Werte)
                 m = _meta_from_base(base)
-                for field, val in [("datum", m["date"]), ("ort", m["ort"]),
-                                   ("athlet", m["athlet"]), ("pos", m["pos"])]:
-                    if f"{field}_{base}" not in st.session_state:
-                        st.session_state[f"{field}_{base}"] = val
+                st.session_state[f"datum_{base}"]  = m["date"]
+                st.session_state[f"ort_{base}"]    = m["ort"]
+                st.session_state[f"athlet_{base}"] = m["athlet"]
+                st.session_state[f"pos_{base}"]    = m["pos"]
                 newly_added.append(base)
         st.session_state["_upload_staged"] = staged
 
