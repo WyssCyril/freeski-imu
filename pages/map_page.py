@@ -316,12 +316,7 @@ def show():
                 hovertemplate="%{y:.0f} m<extra>" + meta.athlete_code + "</extra>",
             ))
 
-            # Sprünge als vertikale Linien (Absprung grün, Landung orange)
-            jumps_df = td["jumps_df"]
-            df_imu   = td["gnss"]  # Zeitachse über GNSS-Zeit
-
-            if not jumps_df.empty and "imuTimestamp [us]" in (sess.get("imu") or pd.DataFrame()).columns:
-                pass  # Zeitstempel-Mapping zu komplex ohne IMU-Referenz in diesem Plot
+            pass  # Sprung-Zeitstempel-Mapping im Höhenprofil folgt später
 
         fig_alt.update_layout(
             xaxis_title="Zeit (s)", yaxis_title="Höhe (m ü. M.)",

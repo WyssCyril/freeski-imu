@@ -74,7 +74,7 @@ def show():
     staged = st.session_state.get("_upload_staged", {})
 
     if staged:
-        st.markdown(f"**{len(staged)} Datei(en) bereit** — Infos aus Dateiname erkannt, bitte prüfen:")
+        st.markdown(f"**{len(staged)} Sensor(en) bereit** — Infos prüfen und laden:")
 
         pos_options = ["Bauch", "Fuss rechts", "Fuss links"]
         pos_label_map = {"Bauch": "Bauch", "Fuss_re": "Fuss rechts", "Fuss_li": "Fuss links",
@@ -82,6 +82,10 @@ def show():
                          "fuss_re": "Fuss rechts", "fuss_li": "Fuss links"}
 
         for base in list(staged.keys()):
+            has_imu  = "imu_bytes"  in staged[base]
+            has_gnss = "gnss_bytes" in staged[base]
+            badges   = ("IMU ✓" if has_imu else "IMU —") + "  |  " + ("GNSS ✓" if has_gnss else "GNSS —")
+
             # Metadaten aus Dateiname lesen
             try:
                 meta = parse_filename(base + "_imuData.csv")
@@ -89,22 +93,30 @@ def show():
                     default_date = datetime.date(int(meta.date[:4]), int(meta.date[4:6]), int(meta.date[6:8]))
                 except Exception:
                     default_date = datetime.date.today()
-                default_ort = meta.location or ""
+                default_ort    = meta.location or ""
                 default_athlet = meta.athlete_code or ""
-                default_pos = pos_label_map.get(meta.position, "Bauch")
+                default_pos    = pos_label_map.get(meta.position, "Bauch")
             except Exception:
-                default_date = datetime.date.today()
-                default_ort = ""
+                default_date   = datetime.date.today()
+                default_ort    = ""
                 default_athlet = ""
-                default_pos = "Bauch"
+                default_pos    = "Bauch"
 
-            with st.expander(f"📄 {base}", expanded=True):
-                c1, c2, c3, c4 = st.columns(4)
-                datum = c1.date_input("Datum", value=default_date, key=f"datum_{base}")
-                ort = c2.text_input("Ort", value=default_ort, placeholder="z.B. Laax", key=f"ort_{base}")
-                athlet = c3.text_input("Athlet", value=default_athlet, placeholder="z.B. 01", key=f"athlet_{base}")
-                pos_idx = pos_options.index(default_pos) if default_pos in pos_options else 0
-                position = c4.selectbox("Position", pos_options, index=pos_idx, key=f"pos_{base}")
+            with st.expander(f"📄 {base}   —   {badges}", expanded=True):
+                if has_imu:
+                    c1, c2, c3, c4 = st.columns(4)
+                    datum    = c1.date_input("Datum",  value=default_date, key=f"datum_{base}")
+                    ort      = c2.text_input("Ort",    value=default_ort,    placeholder="z.B. Laax", key=f"ort_{base}")
+                    athlet   = c3.text_input("Athlet", value=default_athlet, placeholder="z.B. 01",   key=f"athlet_{base}")
+                    pos_idx  = pos_options.index(default_pos) if default_pos in pos_options else 0
+                    position = c4.selectbox("Position", pos_options, index=pos_idx, key=f"pos_{base}")
+                else:
+                    # GNSS-only: kein Positions-Selector nötig
+                    c1, c2, c3 = st.columns(3)
+                    datum    = c1.date_input("Datum",  value=default_date, key=f"datum_{base}")
+                    ort      = c2.text_input("Ort",    value=default_ort,    placeholder="z.B. Laax", key=f"ort_{base}")
+                    athlet   = c3.text_input("Athlet", value=default_athlet, placeholder="z.B. 01",   key=f"athlet_{base}")
+                    position = "—"
 
         if st.button("Hochgeladene Dateien laden", type="primary"):
             loaded = {}
