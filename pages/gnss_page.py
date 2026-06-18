@@ -176,8 +176,6 @@ def _load_gnss_upload_section():
 def show():
     st.header("GNSS — GPS-Track & Geschwindigkeit")
 
-    _load_gnss_upload_section()
-
     # Kombiniere IMU-geladene Sessions (mit GNSS) + direkt geladene GNSS-only Sessions
     imu_sessions  = st.session_state.get("loaded_sessions", {})
     gnss_extra    = st.session_state.get("gnss_only_sessions", {})
