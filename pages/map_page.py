@@ -315,14 +315,15 @@ def show():
             rgb   = td["rgb"]
             meta  = td["meta"]
 
+            r, g, b = int(rgb[0]), int(rgb[1]), int(rgb[2])
             fig_alt.add_trace(go.Scatter(
-                x=t, y=df_d["altitude [m]"],
+                x=t, y=df_d["altitude [m]"].tolist(),
                 mode="lines",
-                line=dict(color=f"rgb({rgb[0]},{rgb[1]},{rgb[2]})", width=1.5),
+                line=dict(color=f"rgb({r},{g},{b})", width=1.5),
                 fill="tozeroy",
-                fillcolor=f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.08)",
+                fillcolor=f"rgba({r},{g},{b},0.08)",
                 name=f"{meta.athlete_code} | {meta.date}",
-                hovertemplate="%{y:.0f} m<extra>" + meta.athlete_code + "</extra>",
+                hovertemplate="%{y:.0f} m<extra>" + str(meta.athlete_code) + "</extra>",
             ))
 
             pass  # Sprung-Zeitstempel-Mapping im Höhenprofil folgt später
