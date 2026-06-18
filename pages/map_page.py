@@ -16,7 +16,8 @@ from utils.admos_parser import load_gnss_raw
 LAT_MIN, LAT_MAX = 45.5, 48.5
 LON_MIN, LON_MAX = 5.5, 11.0
 ALT_MAX = 5000
-LIFT_ALT_THRESHOLD = 80.0   # Aufstieg > 80m = Liftfahrt
+LIFT_ALT_MIN_GAIN  = 30.0   # Mindest-Höhengewinn für Lift-Kandidat (m)
+LIFT_SPEED_MAX     = 25.0   # Max. Durchschnittsgeschwindigkeit auf Lift (km/h)
 
 ATHLETE_COLORS = [
     (31,  119, 180),
@@ -53,33 +54,48 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
     return df.reset_index(drop=True) if len(df) > 10 else None
 
 
-def _remove_lifts(df: pd.DataFrame, lift_threshold: float = LIFT_ALT_THRESHOLD) -> pd.DataFrame:
+def _remove_lifts(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Entfernt Abschnitte wo der Athlet mehr als lift_threshold Meter aufsteigt.
-    Arbeitet auf dem Höhenprofil: erkennt zusammenhängende Aufstiegs-Segmente.
+    Erkennt Liftfahrten automatisch aus Höhe + Geschwindigkeit:
+    - Aufstiegs-Segment wird gefunden (Höhe steigt kontinuierlich)
+    - Gilt als Lift wenn: Höhengewinn > LIFT_ALT_MIN_GAIN UND Ø-Geschwindigkeit < LIFT_SPEED_MAX
+    - Ohne Geschwindigkeitsdaten: Fallback auf reinen Höhenanstieg > 80m
     """
     if "altitude [m]" not in df.columns:
         return df
 
-    alt = df["altitude [m]"].values
+    # Höhe glätten um GPS-Rauschen zu reduzieren
+    alt = pd.Series(df["altitude [m]"].values).rolling(5, center=True, min_periods=1).mean().values
+    has_speed = "speed_kmh" in df.columns
+    spd = df["speed_kmh"].values if has_speed else None
     n = len(alt)
     keep = np.ones(n, dtype=bool)
 
     i = 0
     while i < n - 1:
-        # Lokales Minimum suchen
-        if alt[i] <= alt[i + 1]:
+        if alt[i] < alt[i + 1]:
             start_i = i
             start_alt = alt[i]
-            # Aufstieg verfolgen
             j = i + 1
-            while j < n and alt[j] >= alt[j - 1]:
-                j += 1
-            end_alt = alt[j - 1]
+            # Aufstieg verfolgen (kleine Rückgänge <2m erlauben für GPS-Rauschen)
+            while j < n - 1:
+                if alt[j + 1] >= alt[j] - 2.0:
+                    j += 1
+                else:
+                    break
+            end_alt = alt[j]
             gain = end_alt - start_alt
-            if gain > lift_threshold:
-                keep[start_i:j] = False
-            i = j
+
+            is_lift = False
+            if has_speed and gain > LIFT_ALT_MIN_GAIN:
+                avg_spd = float(np.mean(spd[start_i:j + 1]))
+                is_lift = avg_spd < LIFT_SPEED_MAX
+            elif not has_speed and gain > 80.0:
+                is_lift = True
+
+            if is_lift:
+                keep[start_i:j + 1] = False
+            i = j + 1
         else:
             i += 1
 
@@ -169,11 +185,6 @@ def show():
     all_athletes = sorted(set(v["meta"].athlete_code for v in filtered.values() if v.get("meta")))
     sel_athletes = st.multiselect("Athleten", all_athletes, default=all_athletes)
 
-    lift_filter = st.checkbox(
-        f"Liftfahrten ausblenden (Aufstieg > {LIFT_ALT_THRESHOLD:.0f} m)",
-        value=True
-    )
-
     ath_color = {a: ATHLETE_COLORS[i % len(ATHLETE_COLORS)]
                  for i, a in enumerate(sorted(set(v["meta"].athlete_code
                                                    for v in filtered.values() if v.get("meta"))))}
@@ -187,8 +198,7 @@ def show():
         df_gnss = _load_gnss(sess)
         if df_gnss is None:
             continue
-        if lift_filter:
-            df_gnss = _remove_lifts(df_gnss)
+        df_gnss = _remove_lifts(df_gnss)
         if len(df_gnss) < 10:
             continue
 
@@ -224,8 +234,7 @@ def show():
 
     # ── Karte ─────────────────────────────────────────────────────────────
     st.subheader("GPS-Track")
-    if lift_filter:
-        st.caption("Liftfahrten (>80m Aufstieg) sind ausgeblendet. Sprünge als Punkte markiert (Grösse = Peak-g).")
+    st.caption("Liftfahrten automatisch erkannt und ausgeblendet (langsamer Aufstieg). Sprünge als rote Punkte markiert (Grösse = Peak-g).")
     map_traces = []
 
     for td in track_data:
