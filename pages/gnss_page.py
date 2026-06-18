@@ -192,7 +192,7 @@ def show():
 
     # ── Ort wählen ────────────────────────────────────────────────────────
     orte = sorted(set(s["meta"].location for s in gnss_sessions.values() if s.get("meta")))
-    sel_ort = st.selectbox("Ort", ["Alle"] + orte)
+    sel_ort = st.selectbox("Ort", ["Alle"] + orte, key="gnss_sel_ort")
 
     filtered = {k: v for k, v in gnss_sessions.items()
                 if sel_ort == "Alle" or (v.get("meta") and v["meta"].location == sel_ort)}
