@@ -120,7 +120,25 @@ def compute_rotation(df_raw: pd.DataFrame, takeoff_idx: int, landing_idx: int) -
     }
 
 
-def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame) -> pd.DataFrame:
+# Bias-Korrektur aus Validierungsmessungen (Magglingen 2026-01-28, Cyril + Nils)
+# Formel: KMP_korrigiert = slope * IMU_peak_g + intercept
+# Bauch: Mittel aus Sensor b1 (r=0.692) und b2 (r=0.592), beide p<0.001
+# Fuss Re/Li: keine signifikante Korrelation (p>0.05) → keine Korrektur
+_BIAS_CORRECTION = {
+    "Bauch":       {"slope": 0.386, "intercept": 4.426},  # Mittel b1+b2
+}
+
+
+def apply_bias_correction(peak_g: float, position_label: str) -> float:
+    """Wendet positionsspezifische Bias-Korrektur an (Validierung vs. Kraftmessplatte)."""
+    corr = _BIAS_CORRECTION.get(position_label)
+    if corr is None:
+        return peak_g
+    return corr["slope"] * peak_g + corr["intercept"]
+
+
+def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame,
+                           position_label: str = "") -> pd.DataFrame:
     """Fügt Time to Peak, RFD und Impuls zu jedem Sprung hinzu."""
     df = df_raw.copy()
     if "accRes [g]" not in df.columns:
@@ -144,8 +162,13 @@ def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame) -> pd.D
 
         rot = compute_rotation(df, int(row["takeoff_idx"]), landing_idx)
 
+        peak_g_raw = peak_g
+        peak_g_corrected = apply_bias_correction(peak_g, position_label)
+
         rows.append({
             **row.to_dict(),
+            "peak_res_g_raw": round(peak_g_raw, 4),
+            "peak_res_g": round(peak_g_corrected, 4),
             "time_to_peak_s": round(delta_t, 4),
             "rfd_g_per_s": round(rfd, 2),
             "impulse_g_s": round(impulse, 4),

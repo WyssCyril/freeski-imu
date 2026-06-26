@@ -36,7 +36,8 @@ def _get_raw_df(sess: dict) -> pd.DataFrame | None:
     return None
 
 
-def _detect_jumps_for_segment(df_imu: pd.DataFrame, axis_vert: str, params: dict) -> pd.DataFrame:
+def _detect_jumps_for_segment(df_imu: pd.DataFrame, axis_vert: str, params: dict,
+                              position_label: str = "") -> pd.DataFrame:
     if len(df_imu) < 100:
         return pd.DataFrame()
     try:
@@ -52,10 +53,11 @@ def _detect_jumps_for_segment(df_imu: pd.DataFrame, axis_vert: str, params: dict
         return pd.DataFrame()
     if jumps.empty:
         return pd.DataFrame()
-    return compute_landing_params(df_imu, jumps)
+    return compute_landing_params(df_imu, jumps, position_label=position_label)
 
 
-def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: dict) -> dict:
+def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: dict,
+                  position_label: str = "") -> dict:
     df = preprocess_imu(raw_df)
     axis_vert = detect_vertical_axis(raw_df)
 
@@ -98,14 +100,14 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
                     ].reset_index(drop=True)
                 else:
                     run_imu = df_session
-                jumps_df = _detect_jumps_for_segment(run_imu, axis_vert, params)
+                jumps_df = _detect_jumps_for_segment(run_imu, axis_vert, params, position_label)
                 session_result["runs"][str(r_id)] = {
                     "df_imu": run_imu,
                     "run_meta": run_row.to_dict(),
                     "jumps": jumps_df,
                 }
         else:
-            jumps_df = _detect_jumps_for_segment(df_session, axis_vert, params)
+            jumps_df = _detect_jumps_for_segment(df_session, axis_vert, params, position_label)
             session_result["runs"]["Alle"] = {
                 "df_imu": df_session,
                 "run_meta": {},
@@ -376,6 +378,16 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     if comment_key not in st.session_state:
         st.session_state[comment_key] = {}
 
+    # Bias-Korrektur Hinweis
+    pos_lbl = meta.position_label if meta else ""
+    from utils.jump_detector import _BIAS_CORRECTION
+    if pos_lbl in _BIAS_CORRECTION:
+        c = _BIAS_CORRECTION[pos_lbl]
+        st.info(f"Bias-Korrektur aktiv ({pos_lbl}): Peak-g = {c['slope']:.3f} × IMU + {c['intercept']:.3f}  "
+                f"(Validierung Kraftmessplatte, Magglingen 2026)")
+    elif pos_lbl:
+        st.warning(f"Keine Bias-Korrektur für {pos_lbl} — Korrelation mit Kraftmessplatte nicht signifikant (p>0.05)")
+
     st.markdown("**Landungsart zuweisen:**")
     hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 2, 3])
     for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Rotation (est.)", "Landungsart", "Kommentar"]):
@@ -555,7 +567,8 @@ def show():
     results: dict[str, dict] = {}
     for key in sel_keys:
         sess = sessions_loaded[key]
-        cache_key = f"pipeline_v4_{key}_{'_'.join(str(v) for v in params.values())}"
+        pos_lbl = sess.get("meta").position_label if sess.get("meta") else ""
+        cache_key = f"pipeline_v5_{key}_{'_'.join(str(v) for v in params.values())}"
         if cache_key not in st.session_state:
             raw_df = _get_raw_df(sess)
             if raw_df is None:
@@ -563,7 +576,8 @@ def show():
                 continue
             with st.spinner(f"Pipeline: {_pos_label(key)} …"):
                 try:
-                    st.session_state[cache_key] = _run_pipeline(raw_df, sess.get("gnss"), params)
+                    st.session_state[cache_key] = _run_pipeline(raw_df, sess.get("gnss"), params,
+                                                                 position_label=pos_lbl)
                 except Exception as e:
                     st.error(f"Pipeline-Fehler ({key}): {e}")
                     continue
@@ -628,7 +642,7 @@ def show():
             st.warning("Keine Runs erkannt.")
             continue
 
-        cache_key = f"pipeline_v4_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v5_{key}_{'_'.join(str(v) for v in params.values())}"
 
         # ── Session-Overview mit Run-Markierungen (IMU + GNSS sync) ─────
         session_df = sessions_dict[sel_session].get("df")
