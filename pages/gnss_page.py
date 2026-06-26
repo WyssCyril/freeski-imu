@@ -76,8 +76,17 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
     if "altitude [m]" in df.columns:
         df = df[(df["altitude [m]"] > 0) & (df["altitude [m]"] < ALT_MAX)]
 
-    # Koordinaten glätten (Medianfilter, Fenster 5) — entfernt GPS-Sprünge
+    # Ausreisser entfernen: Punkte > 20km vom Median-Zentrum des Tracks
     df = df.reset_index(drop=True)
+    lat_med = df["latitude [deg]"].median()
+    lon_med = df["longitude [deg]"].median()
+    # Haversine-Distanz in km (vereinfacht)
+    dlat = (df["latitude [deg]"] - lat_med) * 111.0
+    dlon = (df["longitude [deg]"] - lon_med) * 111.0 * np.cos(np.radians(lat_med))
+    dist_km = np.sqrt(dlat**2 + dlon**2)
+    df = df[dist_km <= 20].reset_index(drop=True)
+
+    # Koordinaten glätten (Medianfilter, Fenster 5)
     df["latitude [deg]"]  = df["latitude [deg]"].rolling(5, center=True, min_periods=1).median()
     df["longitude [deg]"] = df["longitude [deg]"].rolling(5, center=True, min_periods=1).median()
     if "altitude [m]" in df.columns:
