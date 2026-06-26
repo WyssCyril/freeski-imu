@@ -203,16 +203,30 @@ def show():
         df_overview.groupby("Athlet_Ort")["Datum"].min().reset_index()
         .sort_values(["Datum", "Athlet_Ort"])
     )
+    def _fmt_athlet(row):
+        try:
+            d = pd.to_datetime(str(row["Datum"]), format="%Y%m%d").strftime("%d.%m.%Y")
+        except Exception:
+            d = str(row["Datum"])
+        parts = row["Athlet_Ort"].split(" | ")
+        ort = parts[1] if len(parts) > 1 else ""
+        athlet = parts[0]
+        return f"{athlet} | {d} | {ort}"
+    athlet_datum["label"] = athlet_datum.apply(_fmt_athlet, axis=1)
+    label_to_key = dict(zip(athlet_datum["label"], athlet_datum["Athlet_Ort"]))
+    key_to_label = dict(zip(athlet_datum["Athlet_Ort"], athlet_datum["label"]))
+    all_athletes_labels = athlet_datum["label"].tolist()
     all_athletes = athlet_datum["Athlet_Ort"].tolist()
     filter_key = "import_athlete_filter"
     stored = st.session_state.get(filter_key, [])
-    if not stored or not all(a in all_athletes for a in stored):
-        st.session_state[filter_key] = all_athletes
-    sel_athletes = st.multiselect(
-        "Athleten anzeigen", all_athletes, key=filter_key,
+    if not stored or not all(a in all_athletes_labels for a in stored):
+        st.session_state[filter_key] = all_athletes_labels
+    sel_labels = st.multiselect(
+        "Athleten auswählen", all_athletes_labels, key=filter_key,
     )
-    if not sel_athletes:
-        sel_athletes = all_athletes
+    if not sel_labels:
+        sel_labels = all_athletes_labels
+    sel_athletes = [label_to_key[l] for l in sel_labels]
     df_overview = df_overview[df_overview["Athlet_Ort"].isin(sel_athletes)]
 
     n_total = len(sessions)
