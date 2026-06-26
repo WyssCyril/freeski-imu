@@ -193,13 +193,13 @@ def show():
             "Ort": m.location, "Sensor-ID": m.sensor_id,
             "Position": m.position_label,
             "GNSS": "✓" if s["gnss"] is not None else "—",
+            "Athlet_Ort": f"{m.athlete_code} | {m.location}",
         })
     df_overview = pd.DataFrame(rows)
 
-    # Athleten-Filter — Default immer alle, Key enthält aktuelle Athleten-Liste
-    all_athletes = sorted(df_overview["Athlet"].unique())
+    # Athleten-Filter — Athlet + Ort kombiniert (Athlet 01 Schilthorn ≠ Athlet 01 Corvatsch)
+    all_athletes = sorted(df_overview["Athlet_Ort"].unique())
     filter_key = "import_athlete_filter"
-    # Wenn neue Athleten dazugekommen sind → Filter zurücksetzen
     stored = st.session_state.get(filter_key, [])
     if not stored or not all(a in all_athletes for a in stored):
         st.session_state[filter_key] = all_athletes
@@ -208,7 +208,7 @@ def show():
     )
     if not sel_athletes:
         sel_athletes = all_athletes
-    df_overview = df_overview[df_overview["Athlet"].isin(sel_athletes)]
+    df_overview = df_overview[df_overview["Athlet_Ort"].isin(sel_athletes)]
 
     n_total = len(sessions)
     n_shown = len(df_overview)
