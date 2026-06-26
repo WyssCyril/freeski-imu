@@ -198,7 +198,12 @@ def show():
     df_overview = pd.DataFrame(rows)
 
     # Athleten-Filter — Athlet + Ort kombiniert (Athlet 01 Schilthorn ≠ Athlet 01 Corvatsch)
-    all_athletes = sorted(df_overview["Athlet_Ort"].unique())
+    # Sortierung nach Datum, dann Athlet
+    athlet_datum = (
+        df_overview.groupby("Athlet_Ort")["Datum"].min().reset_index()
+        .sort_values(["Datum", "Athlet_Ort"])
+    )
+    all_athletes = athlet_datum["Athlet_Ort"].tolist()
     filter_key = "import_athlete_filter"
     stored = st.session_state.get(filter_key, [])
     if not stored or not all(a in all_athletes for a in stored):
