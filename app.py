@@ -114,9 +114,9 @@ st.markdown("""
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 if _is_local:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Sprünge", "📡 GPS-Rohdaten", "🔬 Validierung"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "GPS & Sprünge", "GPS-Rohdaten", "Validierung"])
 else:
-    tab1, tab2, tab3, tab4 = st.tabs(["📁 Daten laden", "📊 Sprunganalyse", "🗺️ GPS & Sprünge", "📡 GPS-Rohdaten"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Daten laden", "Sprunganalyse", "GPS & Sprünge", "GPS-Rohdaten"])
     tab5 = None
 
 with tab1:
