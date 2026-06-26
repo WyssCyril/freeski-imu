@@ -619,7 +619,10 @@ def show():
             first_sess = next(iter(result["sessions"].values()), {})
             df_raw = first_sess.get("df")
             if df_raw is not None:
-                traces.append({"df": df_raw, "label": _pos_label(key), "color": color})
+                # Downsample auf max. 5000 Punkte für den Overlay-Plot
+                step = max(1, len(df_raw) // 5000)
+                traces.append({"df": df_raw.iloc[::step].reset_index(drop=True),
+                               "label": _pos_label(key), "color": color})
         if traces:
             st.plotly_chart(_plot_overlay(traces), use_container_width=True,
                             config={"scrollZoom": True})
