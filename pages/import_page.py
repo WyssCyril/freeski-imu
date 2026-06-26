@@ -214,9 +214,16 @@ def show():
     n_shown = len(df_overview)
     st.subheader(f"Geladene Dateien ({n_shown} von {n_total})")
 
-    group_by  = st.radio("Gruppieren nach", ["Athlet", "Testtag", "Ort"], horizontal=True)
+    group_by  = st.radio("Gruppieren nach", ["Athlet", "Testtag", "Ort", "Position", "Position & Ort"], horizontal=True)
     # Athlet+Ort kombiniert damit 01 Schilthorn ≠ 01 Corvatsch
-    group_col = {"Athlet": "Athlet_Ort", "Testtag": "Datum", "Ort": "Ort"}[group_by]
+    group_col = {
+        "Athlet":          "Athlet_Ort",
+        "Testtag":         "Datum",
+        "Ort":             "Ort",
+        "Position":        "Position",
+        "Position & Ort":  "Pos_Ort",
+    }[group_by]
+    df_overview["Pos_Ort"] = df_overview["Position"] + " | " + df_overview["Ort"]
 
     for grp_val, grp_df in df_overview.groupby(group_col, sort=True):
         n = len(grp_df)
