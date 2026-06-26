@@ -65,6 +65,9 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
         df["speedN [m/s]"]**2 + df["speedE [m/s]"]**2 + df["speedD [m/s]"]**2
     ) * 3.6
 
+    # GPS-Fehler entfernen (Athlet nie schneller als 90 km/h)
+    df = df[df["speed_kmh"] <= 90]
+
     # Ungültige GPS-Punkte entfernen
     df = df[
         (df["latitude [deg]"]  > LAT_MIN) & (df["latitude [deg]"]  < LAT_MAX) &

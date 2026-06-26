@@ -51,6 +51,7 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
             df["speedN [m/s]"]**2 + df["speedE [m/s]"]**2 +
             df.get("speedD [m/s]", pd.Series(np.zeros(len(df))))**2
         ) * 3.6
+        df = df[df["speed_kmh"] <= 90]  # GPS-Fehler entfernen
     return df.reset_index(drop=True) if len(df) > 10 else None
 
 
