@@ -201,7 +201,7 @@ def show():
     # Sortierung nach Datum, dann Athlet
     athlet_datum = (
         df_overview.groupby("Athlet_Ort")["Datum"].min().reset_index()
-        .sort_values(["Datum", "Athlet_Ort"])
+        .sort_values(["Datum", "Athlet_Ort"], ascending=[False, True])
     )
     def _fmt_athlet(row):
         try:
