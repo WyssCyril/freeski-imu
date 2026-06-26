@@ -618,8 +618,25 @@ def show():
             # Ersten Session-DataFrame verwenden
             first_sess = next(iter(result["sessions"].values()), {})
             df_raw = first_sess.get("df")
-            if df_raw is not None:
-                # Downsample auf max. 5000 Punkte für den Overlay-Plot
+            # Nur Sprungabschnitte extrahieren (±1s um jeden Sprung)
+            all_jumps = pd.concat(
+                [rd["jumps"] for rd in result["sessions"][next(iter(result["sessions"]))]["runs"].values()
+                 if rd.get("jumps") is not None and not rd["jumps"].empty],
+                ignore_index=True
+            ) if result["sessions"] else pd.DataFrame()
+            if df_raw is not None and not all_jumps.empty and "takeoff_idx" in all_jumps.columns:
+                margin = int(200 * 1.0)  # 1s Marge bei 200Hz
+                masks = [
+                    (df_raw.index >= max(0, int(row["takeoff_idx"]) - margin)) &
+                    (df_raw.index <= min(len(df_raw) - 1, int(row.get("peak_res_idx", row["landing_idx"])) + margin))
+                    for _, row in all_jumps.iterrows()
+                ]
+                combined = masks[0]
+                for m_ in masks[1:]:
+                    combined = combined | m_
+                df_jumps = df_raw[combined].reset_index(drop=True)
+                traces.append({"df": df_jumps, "label": _pos_label(key), "color": color})
+            elif df_raw is not None:
                 step = max(1, len(df_raw) // 5000)
                 traces.append({"df": df_raw.iloc[::step].reset_index(drop=True),
                                "label": _pos_label(key), "color": color})
