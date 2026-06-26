@@ -619,11 +619,11 @@ def show():
             first_sess = next(iter(result["sessions"].values()), {})
             df_raw = first_sess.get("df")
             # Nur Sprungabschnitte extrahieren (±1s um jeden Sprung)
-            all_jumps = pd.concat(
-                [rd["jumps"] for rd in result["sessions"][next(iter(result["sessions"]))]["runs"].values()
-                 if rd.get("jumps") is not None and not rd["jumps"].empty],
-                ignore_index=True
-            ) if result["sessions"] else pd.DataFrame()
+            jump_dfs = [
+                rd["jumps"] for rd in result["sessions"][next(iter(result["sessions"]))]["runs"].values()
+                if rd.get("jumps") is not None and not rd["jumps"].empty
+            ] if result["sessions"] else []
+            all_jumps = pd.concat(jump_dfs, ignore_index=True) if jump_dfs else pd.DataFrame()
             if df_raw is not None and not all_jumps.empty and "takeoff_idx" in all_jumps.columns:
                 margin = int(200 * 1.0)  # 1s Marge bei 200Hz
                 masks = [
