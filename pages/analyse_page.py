@@ -535,6 +535,20 @@ def show():
     # Alle Sensor-Keys der gewählten Athleten sammeln
     group_keys = [k for g in sel_groups for k in athlete_groups[g]]
 
+    # ── Positions-Filter ─────────────────────────────────────────────────
+    all_positions = sorted({
+        sessions_loaded[k].get("meta").position_label
+        for k in group_keys
+        if sessions_loaded[k].get("meta")
+    })
+    if len(all_positions) > 1:
+        sel_positions = st.multiselect("Sensorposition", all_positions, default=all_positions)
+        if not sel_positions:
+            sel_positions = all_positions
+        group_keys = [k for k in group_keys
+                      if sessions_loaded[k].get("meta") and
+                      sessions_loaded[k]["meta"].position_label in sel_positions]
+
     # ── Sensor-Auswahl ───────────────────────────────────────────────────
     def _pos_label(k):
         m = sessions_loaded[k].get("meta")
