@@ -66,6 +66,7 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
         session_result = {"df": df_session, "runs": {}}
         runs_df = pd.DataFrame()
 
+        gnss_s = None
         if gnss_df is not None:
             try:
                 gnss_clean = sensor_lib.add_resultant_speed(gnss_df)
@@ -83,6 +84,8 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
                     runs_df = pd.DataFrame()
             except Exception:
                 runs_df = pd.DataFrame()
+
+        session_result["gnss"] = gnss_s  # für synchronisierten Plot
 
         if not runs_df.empty:
             t_col = "imuTimestamp [us]"
@@ -625,8 +628,104 @@ def show():
             st.warning("Keine Runs erkannt.")
             continue
 
-        st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
         cache_key = f"pipeline_v4_{key}_{'_'.join(str(v) for v in params.values())}"
+
+        # ── Session-Overview mit Run-Markierungen (IMU + GNSS sync) ─────
+        session_df = sessions_dict[sel_session].get("df")
+        gnss_sess  = sessions_dict[sel_session].get("gnss")
+        runs_with_meta = [
+            (rid, sessions_dict[sel_session]["runs"][rid].get("run_meta", {}))
+            for rid in run_ids
+            if sessions_dict[sel_session]["runs"][rid].get("run_meta")
+        ]
+        if session_df is not None:
+            imu_t_col    = "imuTimestamp [us]"
+            gnss_t_col   = "timestamp [us]"
+            acc_res_col  = "accRes [g]" if "accRes [g]" in session_df.columns else "acc_norm_g"
+
+            if imu_t_col in session_df.columns and acc_res_col in session_df.columns:
+                # Gemeinsamer Nullpunkt: frühester Timestamp über beide Sensoren
+                t0 = session_df[imu_t_col].values[0]
+                if gnss_sess is not None and gnss_t_col in gnss_sess.columns:
+                    t0 = min(t0, gnss_sess[gnss_t_col].values[0])
+
+                t_imu = (session_df[imu_t_col].values - t0) / 1e6
+
+                has_gnss = (gnss_sess is not None and gnss_t_col in gnss_sess.columns
+                            and "speedRes [m/s]" in gnss_sess.columns)
+                n_rows = 3 if (has_gnss and "altitude [m]" in gnss_sess.columns) else (2 if has_gnss else 1)
+                row_h  = [0.5, 0.3, 0.2][:n_rows]
+
+                subplot_titles = ["accRes [g]"]
+                if has_gnss:
+                    subplot_titles.append("Geschwindigkeit (m/s)")
+                if has_gnss and "altitude [m]" in gnss_sess.columns:
+                    subplot_titles.append("Höhe (m)")
+
+                from plotly.subplots import make_subplots as _make_subplots
+                fig_ov = _make_subplots(
+                    rows=n_rows, cols=1, shared_xaxes=True,
+                    row_heights=row_h, subplot_titles=subplot_titles,
+                    vertical_spacing=0.06,
+                )
+
+                fig_ov.add_trace(go.Scatter(
+                    x=t_imu, y=session_df[acc_res_col].values,
+                    line=dict(color="#555", width=0.7), name="accRes [g]", showlegend=False,
+                ), row=1, col=1)
+                fig_ov.add_hline(y=16, line_dash="dot", line_color="red",
+                                 annotation_text="16g", row=1, col=1)
+
+                if has_gnss:
+                    t_gnss = (gnss_sess[gnss_t_col].values - t0) / 1e6
+                    fig_ov.add_trace(go.Scatter(
+                        x=t_gnss, y=gnss_sess["speedRes [m/s]"].values,
+                        line=dict(color="#1f77b4", width=1.0), name="Speed", showlegend=False,
+                    ), row=2, col=1)
+                    if "altitude [m]" in gnss_sess.columns:
+                        fig_ov.add_trace(go.Scatter(
+                            x=t_gnss, y=gnss_sess["altitude [m]"].values,
+                            line=dict(color="#2ca02c", width=1.0), name="Höhe", showlegend=False,
+                            fill="tozeroy", fillcolor="rgba(44,160,44,0.08)",
+                        ), row=3, col=1)
+
+                # Run-Markierungen in alle Subplots
+                run_colors = ["#1f77b4", "#ff7f0e", "#d62728", "#9467bd",
+                              "#8c564b", "#e377c2", "#17becf", "#bcbd22"]
+                for r_idx, (rid, run_meta) in enumerate(runs_with_meta):
+                    rcolor   = run_colors[r_idx % len(run_colors)]
+                    start_us = run_meta.get("start_time_us")
+                    end_us   = run_meta.get("end_time_us")
+                    if start_us is None or end_us is None:
+                        continue
+                    t_start = (float(start_us) - t0) / 1e6
+                    t_end   = (float(end_us)   - t0) / 1e6
+                    for row_n in range(1, n_rows + 1):
+                        fig_ov.add_vrect(
+                            x0=t_start, x1=t_end,
+                            fillcolor=rcolor, opacity=0.10, line_width=0,
+                            row=row_n, col=1,
+                        )
+                    fig_ov.add_vline(
+                        x=t_start, line_dash="dash", line_color=rcolor, line_width=1.5,
+                        annotation_text=f"▶ {rid}", annotation_position="top left",
+                        annotation_font=dict(size=10, color=rcolor),
+                        row=1, col=1,
+                    )
+
+                fig_ov.update_layout(
+                    title=f"Session {sel_session} — {len(runs_with_meta)} Run(s)"
+                          + (" | IMU + GNSS synchronisiert" if has_gnss else ""),
+                    height=200 + 150 * n_rows, template="plotly_white",
+                    margin=dict(t=50, b=30),
+                )
+                fig_ov.update_xaxes(
+                    title_text="Zeit (s)", row=n_rows, col=1,
+                )
+                fig_ov.update_xaxes(rangeslider=dict(visible=True, thickness=0.04), row=n_rows, col=1)
+                st.plotly_chart(fig_ov, use_container_width=True, config={"scrollZoom": True})
+
+        st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
 
         for run_id in run_ids:
             run_data   = sessions_dict[sel_session]["runs"][run_id]
