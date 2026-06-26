@@ -511,15 +511,22 @@ def show():
     # ── Athleten-Auswahl ─────────────────────────────────────────────────
     # Alle verfügbaren Athleten ermitteln
     athlete_groups: dict[str, list[str]] = {}
+    group_sort: dict[str, str] = {}
     for k, s in sessions_loaded.items():
         m = s.get("meta")
         if m:
-            gkey = f"{m.athlete_code}  |  {m.date}  |  {m.location}"
+            try:
+                date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y")
+            except Exception:
+                date_fmt = m.date
+            gkey = f"{m.athlete_code}  |  {date_fmt}  |  {m.location}"
+            group_sort[gkey] = m.date  # für Sortierung nach Datum
         else:
             gkey = k
+            group_sort[gkey] = ""
         athlete_groups.setdefault(gkey, []).append(k)
 
-    group_names = sorted(athlete_groups.keys())
+    group_names = sorted(athlete_groups.keys(), key=lambda g: group_sort.get(g, ""), reverse=True)
     sel_groups = st.multiselect("Athleten auswählen", group_names, default=group_names[:1])
     if not sel_groups:
         st.info("Mindestens einen Athleten auswählen.")
