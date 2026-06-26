@@ -76,6 +76,13 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
     if "altitude [m]" in df.columns:
         df = df[(df["altitude [m]"] > 0) & (df["altitude [m]"] < ALT_MAX)]
 
+    # Koordinaten glätten (Medianfilter, Fenster 5) — entfernt GPS-Sprünge
+    df = df.reset_index(drop=True)
+    df["latitude [deg]"]  = df["latitude [deg]"].rolling(5, center=True, min_periods=1).median()
+    df["longitude [deg]"] = df["longitude [deg]"].rolling(5, center=True, min_periods=1).median()
+    if "altitude [m]" in df.columns:
+        df["altitude [m]"] = df["altitude [m]"].rolling(5, center=True, min_periods=1).median()
+
     return df.reset_index(drop=True) if len(df) > 10 else None
 
 

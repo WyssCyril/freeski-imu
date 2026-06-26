@@ -52,7 +52,15 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
             df.get("speedD [m/s]", pd.Series(np.zeros(len(df))))**2
         ) * 3.6
         df = df[df["speed_kmh"] <= 90]  # GPS-Fehler entfernen
-    return df.reset_index(drop=True) if len(df) > 10 else None
+
+    # Koordinaten glätten (Medianfilter, Fenster 5) — entfernt GPS-Sprünge
+    df = df.reset_index(drop=True)
+    df["latitude [deg]"]  = df["latitude [deg]"].rolling(5, center=True, min_periods=1).median()
+    df["longitude [deg]"] = df["longitude [deg]"].rolling(5, center=True, min_periods=1).median()
+    if "altitude [m]" in df.columns:
+        df["altitude [m]"] = df["altitude [m]"].rolling(5, center=True, min_periods=1).median()
+
+    return df if len(df) > 10 else None
 
 
 def _remove_lifts(df: pd.DataFrame) -> pd.DataFrame:
