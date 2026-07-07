@@ -114,10 +114,10 @@ st.markdown("""
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 if _is_local:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "GPS & Sprünge", "GPS-Rohdaten", "Validierung"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten", "Validierung"])
 else:
-    tab1, tab2, tab3, tab4 = st.tabs(["Daten laden", "Sprunganalyse", "GPS & Sprünge", "GPS-Rohdaten"])
-    tab5 = None
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"])
+    tab6 = None
 
 with tab1:
     from pages import import_page
@@ -131,14 +131,18 @@ with tab2:
     stats_page.show()
 
 with tab3:
+    from pages import results_page
+    results_page.show()
+
+with tab4:
     from pages import map_page
     map_page.show()
 
-with tab4:
+with tab5:
     from pages import gnss_page
     gnss_page.show()
 
-if tab5 is not None:
-    with tab5:
+if tab6 is not None:
+    with tab6:
         from pages import validation_page
         validation_page.show()
