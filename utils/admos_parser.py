@@ -13,7 +13,8 @@ SAMPLE_RATE_IMU = 200   # Hz
 SAMPLE_RATE_GNSS = 10   # Hz
 CLIP_LIMIT_G = 16.0     # Sensorbegrenzung AdMos
 
-DATA_FOLDER = "/Users/cyrilwyss/AAMasterarbeit/zz_Data Claude"
+import os as _os
+DATA_FOLDER = "/Users/cyrilwyss/AAMasterarbeit/zz_Data Claude" if _os.path.exists("/Users/cyrilwyss/AAMasterarbeit/zz_Data Claude") else ""
 
 # Ordner-Namen (lowercase) die beim On-Snow-Scan übersprungen werden
 EXCLUDE_DIRS = {"datenfiles validierung", "nicht verwenden", "nicht verwenden!", "runs", "__pycache__"}

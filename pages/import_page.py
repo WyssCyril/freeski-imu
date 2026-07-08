@@ -69,7 +69,7 @@ def show():
 
     # ── Aus festem Ordner (nur lokal) ────────────────────────────────────
     import socket
-    _is_local = socket.gethostname() != "streamlit"
+    _is_local = socket.gethostname() != "streamlit" and bool(DATA_FOLDER)
     if _is_local and st.button("Aus Ordner laden", type="primary"):
         pairs = find_csv_pairs(DATA_FOLDER)
         if not pairs:
