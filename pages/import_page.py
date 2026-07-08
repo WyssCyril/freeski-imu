@@ -67,8 +67,10 @@ def _load_staged_entry(base: str, files: dict) -> dict | None:
 def show():
     st.header("Daten laden")
 
-    # ── Aus festem Ordner ──────────────────────────────────────────────────
-    if st.button("Aus Ordner laden", type="primary"):
+    # ── Aus festem Ordner (nur lokal) ────────────────────────────────────
+    import socket
+    _is_local = socket.gethostname() != "streamlit"
+    if _is_local and st.button("Aus Ordner laden", type="primary"):
         pairs = find_csv_pairs(DATA_FOLDER)
         if not pairs:
             st.warning(f"Keine CSV-Dateien gefunden in: {DATA_FOLDER}")
