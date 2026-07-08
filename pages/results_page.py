@@ -110,27 +110,42 @@ def show():
 
     if st.button("Excel erstellen", type="primary"):
         buf = io.BytesIO()
+
+        agg_dict = dict(
+            Anzahl_Sprünge=("Sprung", "count"),
+            Peak_g_mean=("Peak (g)", "mean"),
+            Peak_g_max=("Peak (g)", "max"),
+            Peak_g_min=("Peak (g)", "min"),
+            Flugzeit_mean=("Flugzeit (s)", "mean"),
+            Flugzeit_max=("Flugzeit (s)", "max"),
+            TTP_mean=("TTP (s)", "mean"),
+            RFD_mean=("RFD (g/s)", "mean"),
+            Impuls_mean=("Impuls (g·s)", "mean"),
+            Geclippt_16g=("16g geclippt", "sum"),
+        )
+
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            # Gesamtübersicht
-            df_filtered[display_cols].to_excel(writer, sheet_name="Alle Sprünge", index=False)
+            jump_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung",
+                         "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
+                         "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
+                         "16g geclippt", "Landungsart", "Kommentar"]
 
-            # Pro Athlet ein Sheet
-            for athlet, grp in df_filtered.groupby("Athlet"):
-                sheet_name = f"Athlet {athlet}"[:31]
-                grp[display_cols].to_excel(writer, sheet_name=sheet_name, index=False)
+            # 1) Einzelne Sprünge
+            df_filtered[jump_cols].to_excel(writer, sheet_name="Einzelsprünge", index=False)
 
-            # Zusammenfassung
-            summary = df_filtered.groupby(["Athlet", "Ort", "Position"]).agg(
-                Anzahl_Sprünge=("Sprung", "count"),
-                Peak_mean=("Peak (g)", "mean"),
-                Peak_max=("Peak (g)", "max"),
-                Flugzeit_mean=("Flugzeit (s)", "mean"),
-                Flugzeit_max=("Flugzeit (s)", "max"),
-                TTP_mean=("TTP (s)", "mean"),
-                RFD_mean=("RFD (g/s)", "mean"),
-                Geclippt=("16g geclippt", "sum"),
-            ).round(3).reset_index()
-            summary.to_excel(writer, sheet_name="Zusammenfassung", index=False)
+            # 2) Session-Zusammenfassung (Athlet + Datum + Ort + Position)
+            sess_summary = (
+                df_filtered.groupby(["Athlet", "Datum", "Ort", "Position"], sort=True)
+                .agg(**agg_dict).round(3).reset_index()
+            )
+            sess_summary.to_excel(writer, sheet_name="Sessions", index=False)
+
+            # 3) Gesamtzusammenfassung (Athlet + Position, alle Sessions)
+            total_summary = (
+                df_filtered.groupby(["Athlet", "Position"], sort=True)
+                .agg(**agg_dict).round(3).reset_index()
+            )
+            total_summary.to_excel(writer, sheet_name="Gesamt", index=False)
 
         buf.seek(0)
         st.download_button(
