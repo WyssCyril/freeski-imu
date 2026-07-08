@@ -104,53 +104,85 @@ def show():
             c2.metric("Ø Flugzeit (s)", f"{grp_df['Flugzeit (s)'].mean():.3f}")
             c3.metric("Max. Peak (g)", f"{grp_df['Peak (g)'].max():.2f}")
 
+    # ── Durchschnittlicher Impact ─────────────────────────────────────────
+    st.divider()
+    st.subheader("Durchschnittlicher Impact")
+    if not df_filtered.empty:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Ø Peak (g) — alle Sprünge", f"{df_filtered['Peak (g)'].mean():.2f}")
+        c2.metric("Median Peak (g)", f"{df_filtered['Peak (g)'].median():.2f}")
+        c3.metric("Max. Peak (g)", f"{df_filtered['Peak (g)'].max():.2f}")
+        c4.metric("Anzahl Sprünge", len(df_filtered))
+
+        # Pro Position
+        st.markdown("**Ø Peak (g) pro Sensorposition:**")
+        pos_summary = df_filtered.groupby("Position")["Peak (g)"].agg(["mean", "median", "max", "count"]).round(2)
+        pos_summary.columns = ["Ø Peak (g)", "Median (g)", "Max. (g)", "Anzahl"]
+        st.dataframe(pos_summary, use_container_width=True)
+
     # ── Excel-Export ──────────────────────────────────────────────────────
     st.divider()
     st.subheader("Excel-Export")
 
-    if st.button("Excel erstellen", type="primary"):
+    agg_dict = dict(
+        Anzahl_Sprünge=("Sprung", "count"),
+        Peak_g_mean=("Peak (g)", "mean"),
+        Peak_g_median=("Peak (g)", "median"),
+        Peak_g_max=("Peak (g)", "max"),
+        Peak_g_min=("Peak (g)", "min"),
+        Flugzeit_mean=("Flugzeit (s)", "mean"),
+        Flugzeit_max=("Flugzeit (s)", "max"),
+        TTP_mean=("TTP (s)", "mean"),
+        RFD_mean=("RFD (g/s)", "mean"),
+        Impuls_mean=("Impuls (g·s)", "mean"),
+        Geclippt_16g=("16g geclippt", "sum"),
+    )
+
+    jump_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung",
+                 "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
+                 "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
+                 "16g geclippt", "Landungsart", "Kommentar"]
+
+    def _make_excel(data: pd.DataFrame, label: str) -> bytes:
         buf = io.BytesIO()
-
-        agg_dict = dict(
-            Anzahl_Sprünge=("Sprung", "count"),
-            Peak_g_mean=("Peak (g)", "mean"),
-            Peak_g_max=("Peak (g)", "max"),
-            Peak_g_min=("Peak (g)", "min"),
-            Flugzeit_mean=("Flugzeit (s)", "mean"),
-            Flugzeit_max=("Flugzeit (s)", "max"),
-            TTP_mean=("TTP (s)", "mean"),
-            RFD_mean=("RFD (g/s)", "mean"),
-            Impuls_mean=("Impuls (g·s)", "mean"),
-            Geclippt_16g=("16g geclippt", "sum"),
-        )
-
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            jump_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung",
-                         "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
-                         "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
-                         "16g geclippt", "Landungsart", "Kommentar"]
-
-            # 1) Einzelne Sprünge
-            df_filtered[jump_cols].to_excel(writer, sheet_name="Einzelsprünge", index=False)
-
-            # 2) Session-Zusammenfassung (Athlet + Datum + Ort + Position)
-            sess_summary = (
-                df_filtered.groupby(["Athlet", "Datum", "Ort", "Position"], sort=True)
-                .agg(**agg_dict).round(3).reset_index()
-            )
-            sess_summary.to_excel(writer, sheet_name="Sessions", index=False)
-
-            # 3) Gesamtzusammenfassung (Athlet + Position, alle Sessions)
-            total_summary = (
-                df_filtered.groupby(["Athlet", "Position"], sort=True)
-                .agg(**agg_dict).round(3).reset_index()
-            )
-            total_summary.to_excel(writer, sheet_name="Gesamt", index=False)
-
+            data[jump_cols].to_excel(writer, sheet_name="Einzelsprünge", index=False)
+            sess = data.groupby(["Athlet", "Datum", "Ort", "Position"], sort=True).agg(**agg_dict).round(3).reset_index()
+            sess.to_excel(writer, sheet_name="Sessions", index=False)
+            gesamt = data.groupby(["Athlet", "Position"], sort=True).agg(**agg_dict).round(3).reset_index()
+            gesamt.to_excel(writer, sheet_name="Gesamt", index=False)
+            # Durchschnitt über alle Sprünge
+            overall = pd.DataFrame([{
+                "Ort": label,
+                "Anzahl_Sprünge": len(data),
+                "Peak_g_mean": round(data["Peak (g)"].mean(), 3),
+                "Peak_g_median": round(data["Peak (g)"].median(), 3),
+                "Peak_g_max": round(data["Peak (g)"].max(), 3),
+                "Flugzeit_mean": round(data["Flugzeit (s)"].mean(), 3),
+                "TTP_mean": round(data["TTP (s)"].mean(), 3),
+                "RFD_mean": round(data["RFD (g/s)"].mean(), 3),
+            }])
+            overall.to_excel(writer, sheet_name="Durchschnitt", index=False)
         buf.seek(0)
-        st.download_button(
-            "Excel herunterladen",
-            data=buf,
-            file_name="impactmessung_ergebnisse.xlsx",
+        return buf.getvalue()
+
+    orte = sorted(df_filtered["Ort"].dropna().unique())
+    cols = st.columns(len(orte) + 1)
+
+    for i, ort in enumerate(orte):
+        df_ort = df_filtered[df_filtered["Ort"] == ort]
+        cols[i].download_button(
+            f"Excel {ort}",
+            data=_make_excel(df_ort, ort),
+            file_name=f"impactmessung_{ort}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"dl_{ort}",
         )
+
+    cols[-1].download_button(
+        "Excel Alle",
+        data=_make_excel(df_filtered, "Alle"),
+        file_name="impactmessung_alle.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="dl_alle",
+    )
