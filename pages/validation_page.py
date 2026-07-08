@@ -11,6 +11,8 @@ from utils.statistics import bland_altman, plot_bland_altman, plot_correlation
 
 VAL_DIR = ("/Users/cyrilwyss/AAMasterarbeit/Data/Validierungsmessungen/"
            "Datasheets Validierungsmessungen neu (Nils & Cyril)")
+import os as _os
+_VAL_DIR_EXISTS = _os.path.exists(VAL_DIR)
 
 # Schwellenwerte
 WARN_PCT  = 15.0

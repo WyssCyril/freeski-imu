@@ -125,6 +125,8 @@ def find_csv_pairs(folder: str) -> list[dict]:
     Unterstützt alle Varianten: _IMU/_imu/_imuData / _GNSS/_gnss/_gnssData
     Ignoriert Checkpoint-, Summary- und unbekannte Dateien.
     """
+    if not folder or not Path(folder).exists():
+        return []
     folder = Path(folder)
     by_base: dict[str, dict] = {}
 
