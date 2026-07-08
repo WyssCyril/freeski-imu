@@ -63,6 +63,10 @@ def parse_filename(filepath: str) -> SensorMeta:
         athlete_code = parts[2] if len(parts) > 2 else ""   # AthleteID als Code
         position_raw = "_".join(parts[3:]) if len(parts) > 3 else ""
 
+    # Normalisierung: "04.2" → "04" (Ersatzsensor selber Athlet)
+    import re as _re
+    athlete_code = _re.sub(r'\.\d+$', '', athlete_code)
+
     position_label = pos_map.get(position_raw, position_raw or "Unbekannt")
 
     return SensorMeta(
