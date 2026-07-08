@@ -344,13 +344,11 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
                 st.session_state[label_key].get(jid, row.get("landing_type", ""))
 
     # Run-Notiz (Tricks / Kommentar vom Athleten)
-    run_note_key = f"run_note_{key}_{sess_id}_{run_id}"
-    saved_note = st.session_state.get(run_note_key, "")
-    new_note = st.text_input("Tricks / Notiz", value=saved_note,
-                             placeholder="z.B. 540 switch, Landung nach links...",
-                             key=f"rn_{key}_{sess_id}_{run_id}")
-    if new_note != saved_note:
-        st.session_state[run_note_key] = new_note
+    run_note_key = f"rn_{key}_{sess_id}_{run_id}"
+    if run_note_key not in st.session_state:
+        st.session_state[run_note_key] = ""
+    st.text_input("Tricks / Notiz", placeholder="z.B. 540 switch, Landung nach links...",
+                  key=run_note_key)
 
     # Run-Metriken
     run_meta = run_data.get("run_meta", {})
@@ -438,7 +436,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         st.session_state["jump_results"] = {}
     st.session_state["jump_results"][f"{key}_{sess_id}_{run_id}"] = {
         "jumps": jumps_df, "meta": meta,
-        "run_note": st.session_state.get(run_note_key, ""),
+        "run_note": st.session_state.get(run_note_key, ""),  # run_note_key = f"rn_{key}_{sess_id}_{run_id}"
     }
 
 
