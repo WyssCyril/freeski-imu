@@ -41,11 +41,11 @@ def show():
     if not results:
         return
 
-    all_jumps = pd.concat(
-        [r["jumps"] for r in results.values()
-         if r.get("jumps") is not None and not r["jumps"].empty],
-        ignore_index=True,
-    )
+    jump_list = [r["jumps"] for r in results.values()
+                 if r.get("jumps") is not None and not r["jumps"].empty]
+    if not jump_list:
+        return
+    all_jumps = pd.concat(jump_list, ignore_index=True)
     if all_jumps.empty:
         return
 
