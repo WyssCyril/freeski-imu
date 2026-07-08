@@ -120,30 +120,37 @@ else:
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"])
     tab6 = None
 
+def _safe_show(fn, *args, **kwargs):
+    try:
+        fn(*args, **kwargs)
+    except Exception as e:
+        st.error(f"Fehler: {e}")
+        st.exception(e)
+
 with tab1:
     from pages import import_page
-    import_page.show()
+    _safe_show(import_page.show)
 
 with tab2:
     from pages import analyse_page
-    analyse_page.show()
+    _safe_show(analyse_page.show)
     st.divider()
     from pages import stats_page
-    stats_page.show()
+    _safe_show(stats_page.show)
 
 with tab3:
     from pages import results_page
-    results_page.show()
+    _safe_show(results_page.show)
 
 with tab4:
     from pages import map_page
-    map_page.show()
+    _safe_show(map_page.show)
 
 with tab5:
     from pages import gnss_page
-    gnss_page.show()
+    _safe_show(gnss_page.show)
 
 if tab6 is not None:
     with tab6:
         from pages import validation_page
-        validation_page.show()
+        _safe_show(validation_page.show)
