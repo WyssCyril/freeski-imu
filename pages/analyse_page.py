@@ -56,10 +56,25 @@ def _detect_jumps_for_segment(df_imu: pd.DataFrame, axis_vert: str, params: dict
     return compute_landing_params(df_imu, jumps, position_label=position_label)
 
 
+def _gnss_time_offset_us(gnss_df: pd.DataFrame) -> float | None:
+    """Berechnet Offset (µs) von relativem GNSS-Timestamp zu echtem POSIX.
+    Nutzt erste Zeile mit validem GPS-Fix (time [POSIXms] > Jahr 2020)."""
+    t_col = "time [POSIXms]"
+    ts_col = "timestamp [us]"
+    if t_col not in gnss_df.columns or ts_col not in gnss_df.columns:
+        return None
+    valid = gnss_df[gnss_df[t_col] > 1.58e12]  # > 2020-01-01
+    if valid.empty:
+        return None
+    row = valid.iloc[0]
+    return float(row[t_col]) * 1000.0 - float(row[ts_col])
+
+
 def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: dict,
                   position_label: str = "") -> dict:
     df = preprocess_imu(raw_df)
     axis_vert = detect_vertical_axis(raw_df)
+    gnss_offset_us = _gnss_time_offset_us(gnss_df) if gnss_df is not None else None
 
     sessions_dict, _ = sensor_lib.detect_sessions_imu(df)
     result = {"sessions": {}, "axis_vert": axis_vert}
@@ -101,9 +116,12 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
                 else:
                     run_imu = df_session
                 jumps_df = _detect_jumps_for_segment(run_imu, axis_vert, params, position_label)
+                meta_dict = run_row.to_dict()
+                if gnss_offset_us is not None and "start_time_us" in meta_dict:
+                    meta_dict["start_time_real_us"] = float(meta_dict["start_time_us"]) + gnss_offset_us
                 session_result["runs"][str(r_id)] = {
                     "df_imu": run_imu,
-                    "run_meta": run_row.to_dict(),
+                    "run_meta": meta_dict,
                     "jumps": jumps_df,
                 }
         else:
@@ -167,19 +185,12 @@ def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
 
 
 def _format_run_time(run_meta: dict) -> str:
-    """Konvertiert start_time_us aus run_meta in einen lesbaren Zeitstring."""
-    ts = run_meta.get("start_time_us")
+    """Gibt echte Startzeit des Runs zurück (aus GPS-kalibriertem Timestamp)."""
+    ts = run_meta.get("start_time_real_us")
     if ts is None:
         return ""
     try:
-        ts = float(ts)
-        # POSIX-Millisekunden → Sekunden (Wert > 1e12 = ms, sonst µs)
-        if ts > 1e15:
-            ts_s = ts / 1e6   # Mikrosekunden
-        elif ts > 1e12:
-            ts_s = ts / 1e3   # Millisekunden
-        else:
-            ts_s = ts         # bereits Sekunden
+        ts_s = float(ts) / 1e6  # µs → Sekunden
         dt = pd.Timestamp(ts_s, unit="s", tz="UTC").tz_convert("Europe/Zurich")
         return dt.strftime("%H:%M:%S")
     except Exception:
