@@ -122,7 +122,7 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
 def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
               axis_vert: str, title: str = "") -> go.Figure:
     t_col = "imuTimestamp [us]"
-    if t_col in df_imu.columns:
+    if t_col in df_imu.columns and len(df_imu) > 0:
         t = (df_imu[t_col].values - df_imu[t_col].values[0]) / 1e6
     else:
         t = np.arange(len(df_imu)) / 200.0
