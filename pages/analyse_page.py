@@ -782,7 +782,6 @@ def show():
 
         st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
 
-        prev_end_us = None
         for run_id in run_ids:
             run_data   = sessions_dict[sel_session]["runs"][run_id]
             run_meta   = run_data.get("run_meta", {})
@@ -790,24 +789,10 @@ def show():
             n_jumps    = len(raw_jumps) if raw_jumps is not None and not raw_jumps.empty else 0
             dur        = run_meta.get("duration_s", "—")
             alt        = run_meta.get("alt_drop_m", "—")
-            exp_label  = (f"Run {run_id}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
+            start_time = _format_run_time(run_meta)
+            time_str   = f"  🕐 {start_time}" if start_time else ""
+            exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
                           + (f"| {dur} s  | Δ{alt} m" if run_meta else ""))
-
-            # Wartezeit oben: Zeit vom Ende des vorherigen Runs bis Start dieses Runs
-            cur_start_us = run_meta.get("start_time_us")
-            if prev_end_us is not None and cur_start_us is not None:
-                try:
-                    wait_s = (float(cur_start_us) - prev_end_us) / 1e6
-                    if 0 < wait_s < 7200:
-                        wm, ws = divmod(int(wait_s), 60)
-                        st.caption(f"⬆️ Wartezeit oben: {wm}m {ws:02d}s")
-                except Exception:
-                    pass
-            try:
-                dur_s = float(dur) if dur != "—" else 0.0
-                prev_end_us = float(cur_start_us) + dur_s * 1e6 if cur_start_us is not None else None
-            except Exception:
-                prev_end_us = None
 
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):
                 _render_run(cache_key, sel_session, run_id, result, key, meta, axis_vert)
