@@ -22,6 +22,7 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
             date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y") if m else ""
         except Exception:
             date_fmt = m.date if m else ""
+        run_note = entry.get("run_note", "")
         for _, jrow in jumps.iterrows():
             rows.append({
                 "Athlet": m.athlete_code if m else run_key,
@@ -29,6 +30,7 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
                 "Ort": m.location if m else "",
                 "Position": m.position_label if m else "",
                 "Sprung": jrow.get("jump_id", ""),
+                "Tricks / Notiz": run_note,
                 "Flugzeit (s)": round(float(jrow.get("flight_time_s", 0)), 3),
                 "Peak (g)": round(float(jrow.get("peak_res_g", 0)), 2),
                 "Peak roh (g)": round(float(jrow.get("peak_res_g_raw", jrow.get("peak_res_g", 0))), 2),
