@@ -31,11 +31,10 @@ def _strip_lifts_from_imu(imu_df: pd.DataFrame, gnss_df: pd.DataFrame) -> pd.Dat
         return imu_df
 
     gnss = gnss_df.copy().reset_index(drop=True)
-    gnss["speed_kmh"] = np.sqrt(
-        gnss.get("speedN [m/s]", 0)**2 +
-        gnss.get("speedE [m/s]", 0)**2 +
-        gnss.get("speedD [m/s]", 0)**2
-    ) * 3.6
+    sN = gnss["speedN [m/s]"] if "speedN [m/s]" in gnss.columns else pd.Series(np.zeros(len(gnss)))
+    sE = gnss["speedE [m/s]"] if "speedE [m/s]" in gnss.columns else pd.Series(np.zeros(len(gnss)))
+    sD = gnss["speedD [m/s]"] if "speedD [m/s]" in gnss.columns else pd.Series(np.zeros(len(gnss)))
+    gnss["speed_kmh"] = np.sqrt(sN**2 + sE**2 + sD**2) * 3.6
 
     alt  = gnss[alt_col].rolling(5, center=True, min_periods=1).mean().values
     spd  = gnss["speed_kmh"].values
