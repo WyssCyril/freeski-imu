@@ -8,7 +8,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-_is_local = socket.gethostname() != "streamlit"
+import os as _os_check
+_is_local = _os_check.path.exists("/Users/cyrilwyss/AAMasterarbeit")
 
 if not _is_local:
     if "authenticated" not in st.session_state:
