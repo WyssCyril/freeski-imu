@@ -343,12 +343,69 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
             jumps_df.loc[jumps_df["jump_id"] == jid, "landing_type"] = \
                 st.session_state[label_key].get(jid, row.get("landing_type", ""))
 
-    # Run-Notiz (Tricks / Kommentar vom Athleten)
+    # ── Notiz + Landungsart-Tabelle (zuoberst) ───────────────────────────
     run_note_key = f"rn_{key}_{sess_id}_{run_id}"
     if run_note_key not in st.session_state:
         st.session_state[run_note_key] = ""
     st.text_input("Tricks / Notiz", placeholder="z.B. 540 switch, Landung nach links...",
                   key=run_note_key)
+
+    comment_key = f"comments_{key}_{sess_id}_{run_id}"
+    if comment_key not in st.session_state:
+        st.session_state[comment_key] = {}
+
+    if not jumps_df.empty:
+        # Bias-Korrektur Hinweis
+        pos_lbl = meta.position_label if meta else ""
+        from utils.jump_detector import _BIAS_CORRECTION
+        if pos_lbl in _BIAS_CORRECTION:
+            c = _BIAS_CORRECTION[pos_lbl]
+            st.info(f"Bias-Korrektur aktiv ({pos_lbl}): Peak-g = {c['slope']:.3f} × IMU + {c['intercept']:.3f}  "
+                    f"(Validierung Kraftmessplatte, Magglingen 2026)")
+        elif pos_lbl:
+            st.warning(f"Keine Bias-Korrektur für {pos_lbl} — Korrelation mit Kraftmessplatte nicht signifikant (p>0.05)")
+
+        st.markdown("**Landungsart zuweisen:**")
+        hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
+        for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
+            h.write(f"**{lbl}**")
+
+        for _, row in jumps_df.iterrows():
+            jid = row["jump_id"]
+            c0, c1, c2, c3, c4, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
+            c0.write(jid)
+            c1.write(f"{row['flight_time_s']:.3f}")
+            c2.write(f"{'⚠️ ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
+            c3.write(f"{row.get('time_to_peak_s', '—')}")
+            c4.write(f"{row.get('rfd_g_per_s', '—')}")
+            c5.write("⚠️" if row.get("clipped_16g") else "✓")
+            saved_comment = st.session_state[comment_key].get(jid, "")
+            new_comment = c8.text_input("", value=saved_comment, placeholder="Kommentar...",
+                                         key=f"cmt_{key}_{sess_id}_{run_id}_{jid}",
+                                         label_visibility="collapsed")
+            if new_comment != saved_comment:
+                st.session_state[comment_key][jid] = new_comment
+            saved = st.session_state[label_key].get(jid, "")
+            new_label = c7.selectbox(
+                "", ["", "vorwärts", "switch"],
+                index=["", "vorwärts", "switch"].index(saved) if saved in ["", "vorwärts", "switch"] else 0,
+                key=f"lb_{key}_{sess_id}_{run_id}_{jid}",
+                label_visibility="collapsed",
+            )
+            if new_label != saved:
+                st.session_state[label_key][jid] = new_label
+                result["sessions"][sess_id]["runs"][run_id]["jumps"].loc[
+                    result["sessions"][sess_id]["runs"][run_id]["jumps"]["jump_id"] == jid,
+                    "landing_type"
+                ] = new_label
+
+        # Export
+        csv = jumps_df.to_csv(index=False).encode()
+        st.download_button("CSV exportieren", csv,
+                           file_name=f"{key}_s{sess_id}_r{run_id}_jumps.csv",
+                           mime="text/csv", key=f"csv_{key}_{sess_id}_{run_id}")
+    else:
+        st.info("Keine Sprünge erkannt.")
 
     # Run-Metriken
     run_meta = run_data.get("run_meta", {})
@@ -358,9 +415,9 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         col_m[0].metric("Dauer", f"{run_meta.get('duration_s', '—')} s")
         col_m[1].metric("Höhendiff.", f"{run_meta.get('alt_drop_m', '—')} m")
     if summ:
-        col_m[2].metric("Sprünge",      summ["Anzahl Sprünge"])
-        col_m[3].metric("Max. Peak-g",  f"{summ['Max. Peak-g']:.2f} g")
-        col_m[4].metric("Ø Peak-g",     f"{summ['Ø Peak-g']:.2f} g")
+        col_m[2].metric("Sprünge",     summ["Anzahl Sprünge"])
+        col_m[3].metric("Max. Peak-g", f"{summ['Max. Peak-g']:.2f} g")
+        col_m[4].metric("Ø Peak-g",    f"{summ['Ø Peak-g']:.2f} g")
 
     # Overview-Plot
     title = (f"{meta.athlete_code if meta else key} | "
@@ -369,68 +426,9 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     fig = _plot_run(df_imu, jumps_df if not jumps_df.empty else None, axis_vert, title=title)
     st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
-    if jumps_df.empty:
-        st.info("Keine Sprünge erkannt.")
-        return
-
-    # ── Horizontaler Jump-Scroller ────────────────────────────────────────
-    st.markdown("**Sprünge — seitlich scrollen:**")
-    _jump_scroller(df_imu, jumps_df, axis_vert, st.session_state[label_key])
-
-    # ── Landungsart-Tabelle ───────────────────────────────────────────────
-    comment_key = f"comments_{key}_{sess_id}_{run_id}"
-    if comment_key not in st.session_state:
-        st.session_state[comment_key] = {}
-
-    # Bias-Korrektur Hinweis
-    pos_lbl = meta.position_label if meta else ""
-    from utils.jump_detector import _BIAS_CORRECTION
-    if pos_lbl in _BIAS_CORRECTION:
-        c = _BIAS_CORRECTION[pos_lbl]
-        st.info(f"Bias-Korrektur aktiv ({pos_lbl}): Peak-g = {c['slope']:.3f} × IMU + {c['intercept']:.3f}  "
-                f"(Validierung Kraftmessplatte, Magglingen 2026)")
-    elif pos_lbl:
-        st.warning(f"Keine Bias-Korrektur für {pos_lbl} — Korrelation mit Kraftmessplatte nicht signifikant (p>0.05)")
-
-    st.markdown("**Landungsart zuweisen:**")
-    hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
-    for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
-        h.write(f"**{lbl}**")
-
-    for _, row in jumps_df.iterrows():
-        jid = row["jump_id"]
-        c0, c1, c2, c3, c4, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
-        c0.write(jid)
-        c1.write(f"{row['flight_time_s']:.3f}")
-        c2.write(f"{'⚠️ ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
-        c3.write(f"{row.get('time_to_peak_s', '—')}")
-        c4.write(f"{row.get('rfd_g_per_s', '—')}")
-        c5.write("⚠️" if row.get("clipped_16g") else "✓")
-        saved_comment = st.session_state[comment_key].get(jid, "")
-        new_comment = c8.text_input("", value=saved_comment, placeholder="Kommentar...",
-                                     key=f"cmt_{key}_{sess_id}_{run_id}_{jid}",
-                                     label_visibility="collapsed")
-        if new_comment != saved_comment:
-            st.session_state[comment_key][jid] = new_comment
-        saved = st.session_state[label_key].get(jid, "")
-        new_label = c7.selectbox(
-            "", ["", "vorwärts", "switch"],
-            index=["", "vorwärts", "switch"].index(saved) if saved in ["", "vorwärts", "switch"] else 0,
-            key=f"lb_{key}_{sess_id}_{run_id}_{jid}",
-            label_visibility="collapsed",
-        )
-        if new_label != saved:
-            st.session_state[label_key][jid] = new_label
-            result["sessions"][sess_id]["runs"][run_id]["jumps"].loc[
-                result["sessions"][sess_id]["runs"][run_id]["jumps"]["jump_id"] == jid,
-                "landing_type"
-            ] = new_label
-
-    # Export
-    csv = jumps_df.to_csv(index=False).encode()
-    st.download_button("CSV exportieren", csv,
-                       file_name=f"{key}_s{sess_id}_r{run_id}_jumps.csv",
-                       mime="text/csv", key=f"csv_{key}_{sess_id}_{run_id}")
+    if not jumps_df.empty:
+        st.markdown("**Sprünge — seitlich scrollen:**")
+        _jump_scroller(df_imu, jumps_df, axis_vert, st.session_state[label_key])
 
     if "jump_results" not in st.session_state:
         st.session_state["jump_results"] = {}
@@ -792,9 +790,7 @@ def show():
             n_jumps    = len(raw_jumps) if raw_jumps is not None and not raw_jumps.empty else 0
             dur        = run_meta.get("duration_s", "—")
             alt        = run_meta.get("alt_drop_m", "—")
-            start_time = _format_run_time(run_meta)
-            time_str   = f"  🕐 {start_time}" if start_time else ""
-            exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
+            exp_label  = (f"Run {run_id}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
                           + (f"| {dur} s  | Δ{alt} m" if run_meta else ""))
 
             # Wartezeit oben: Zeit vom Ende des vorherigen Runs bis Start dieses Runs
