@@ -5,11 +5,76 @@ import io
 import datetime
 import streamlit as st
 import pandas as pd
+import numpy as np
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from utils.admos_parser import (parse_filename, load_imu_raw, load_gnss_raw,
                                 find_csv_pairs, classify_sensor_file,
                                 sensor_file_base, DATA_FOLDER, SensorMeta)
+
+LIFT_ALT_MIN_GAIN = 30.0
+LIFT_SPEED_MAX    = 25.0
+
+
+def _strip_lifts_from_imu(imu_df: pd.DataFrame, gnss_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Entfernt Liftfahrten aus IMU-Daten anhand GNSS-Zeitstempel.
+    Erkennt Liftphasen (Höhengewinn >30m + Ø-Speed <25 km/h) und löscht
+    die entsprechenden IMU-Zeilen anhand des Zeitstempels.
+    """
+    imu_t_col  = "imuTimestamp [us]"
+    gnss_t_col = "timestamp [us]"
+    alt_col    = "altitude [m]"
+    if imu_t_col not in imu_df.columns or gnss_t_col not in gnss_df.columns:
+        return imu_df
+    if alt_col not in gnss_df.columns:
+        return imu_df
+
+    gnss = gnss_df.copy().reset_index(drop=True)
+    gnss["speed_kmh"] = np.sqrt(
+        gnss.get("speedN [m/s]", 0)**2 +
+        gnss.get("speedE [m/s]", 0)**2 +
+        gnss.get("speedD [m/s]", 0)**2
+    ) * 3.6
+
+    alt  = gnss[alt_col].rolling(5, center=True, min_periods=1).mean().values
+    spd  = gnss["speed_kmh"].values
+    ts   = gnss[gnss_t_col].values
+    n    = len(alt)
+
+    lift_intervals = []
+    i = 0
+    while i < n - 1:
+        if alt[i] < alt[i + 1]:
+            start_i = i
+            start_alt = alt[i]
+            j = i + 1
+            while j < n - 1 and alt[j + 1] >= alt[j] - 2.0:
+                j += 1
+            gain = alt[j] - start_alt
+            if gain > LIFT_ALT_MIN_GAIN:
+                avg_spd = float(np.mean(spd[start_i:j + 1]))
+                if avg_spd < LIFT_SPEED_MAX:
+                    lift_intervals.append((ts[start_i], ts[j]))
+            i = j + 1
+        else:
+            i += 1
+
+    if not lift_intervals:
+        return imu_df
+
+    imu_ts = imu_df[imu_t_col].values
+    keep   = np.ones(len(imu_ts), dtype=bool)
+    for t_start, t_end in lift_intervals:
+        keep &= ~((imu_ts >= t_start) & (imu_ts <= t_end))
+
+    n_removed = int((~keep).sum())
+    n_total   = len(imu_df)
+    if n_removed > 0:
+        st.caption(f"Liftfahrten entfernt: {n_removed}/{n_total} IMU-Zeilen ({n_removed/n_total*100:.0f}%)")
+
+    return imu_df[keep].reset_index(drop=True)
+
 
 POS_LABEL_MAP = {
     "Bauch": "Bauch", "Fuss_re": "Fuss rechts", "Fuss_li": "Fuss links",
@@ -60,6 +125,11 @@ def _load_staged_entry(base: str, files: dict) -> dict | None:
         gnss_df = pd.read_csv(io.BytesIO(files["gnss_bytes"]))
     if imu_df is None and gnss_df is None:
         return None
+
+    # Liftfahrten aus IMU entfernen anhand GNSS-Zeitstempel
+    if imu_df is not None and gnss_df is not None:
+        imu_df = _strip_lifts_from_imu(imu_df, gnss_df)
+
     return {"key": new_key, "imu": imu_df, "gnss": gnss_df,
             "imu_path": None, "gnss_path": None, "meta": meta}
 
