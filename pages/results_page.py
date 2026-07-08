@@ -92,9 +92,10 @@ def show():
     group_by = st.radio("Gruppieren nach", ["Athlet", "Ort", "Position", "Datum"], horizontal=True)
     group_col = {"Athlet": "Athlet", "Ort": "Ort", "Position": "Position", "Datum": "Datum"}[group_by]
 
-    display_cols = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung",
-                    "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
-                    "Impuls (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
+    all_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung", "Tricks / Notiz",
+                "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
+                "Impuls (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
+    display_cols = [c for c in all_cols if c in df_filtered.columns]
 
     for grp_val, grp_df in df_filtered.groupby(group_col, sort=True):
         with st.expander(f"**{grp_val}** — {len(grp_df)} Sprünge", expanded=False):
