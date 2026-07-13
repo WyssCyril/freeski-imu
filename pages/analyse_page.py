@@ -745,12 +745,20 @@ def show():
             unsafe_allow_html=True,
         )
 
-        # Athlet ID für Protokoll-Verknüpfung
+        # Athlet ID für Protokoll-Verknüpfung (auto aus athlete_code)
         protocol_df_outer = st.session_state.get("protocol_df")
         if protocol_df_outer is not None and "Athlet ID" in protocol_df_outer.columns:
             proto_athlet_key = f"proto_athlet_{key}"
             athlet_ids = ["—"] + [str(x) for x in
                                    sorted(protocol_df_outer["Athlet ID"].dropna().unique())]
+            # Auto-Matching: athlete_code "02" → 2.0 → "2.0"
+            if proto_athlet_key not in st.session_state and meta is not None:
+                try:
+                    auto_id = str(float(meta.athlete_code))
+                    if auto_id in athlet_ids:
+                        st.session_state[proto_athlet_key] = auto_id
+                except Exception:
+                    pass
             saved_proto = st.session_state.get(proto_athlet_key, "—")
             if saved_proto not in athlet_ids:
                 saved_proto = "—"
@@ -759,7 +767,7 @@ def show():
                 athlet_ids,
                 index=athlet_ids.index(saved_proto),
                 key=proto_athlet_key,
-                help="Verknüpft diesen Sensor mit einer Athlet-ID aus dem Protokoll für automatisches Vorausfüllen.",
+                help="Automatisch aus Dateiname gesetzt — kann manuell überschrieben werden.",
             )
 
         if not sessions_dict:
