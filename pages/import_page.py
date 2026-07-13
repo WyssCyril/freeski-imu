@@ -12,8 +12,9 @@ from utils.admos_parser import (parse_filename, load_imu_raw, load_gnss_raw,
                                 find_csv_pairs, classify_sensor_file,
                                 sensor_file_base, DATA_FOLDER, SensorMeta)
 
-LIFT_ALT_MIN_GAIN = 30.0
-LIFT_SPEED_MAX    = 25.0
+LIFT_ALT_MIN_GAIN    = 50.0   # m Höhengewinn
+LIFT_SPEED_MAX       = 15.0   # km/h Ø-Geschwindigkeit
+LIFT_MIN_DURATION_S  = 180.0  # s Mindestdauer (Pipe-Runs < 60s → kein False-Positive)
 
 
 def _strip_lifts_from_imu(imu_df: pd.DataFrame, gnss_df: pd.DataFrame) -> pd.DataFrame:
@@ -53,7 +54,8 @@ def _strip_lifts_from_imu(imu_df: pd.DataFrame, gnss_df: pd.DataFrame) -> pd.Dat
             gain = alt[j] - start_alt
             if gain > LIFT_ALT_MIN_GAIN:
                 avg_spd = float(np.mean(spd[start_i:j + 1]))
-                if avg_spd < LIFT_SPEED_MAX:
+                duration_s = (ts[j] - ts[start_i]) / 1e6
+                if avg_spd < LIFT_SPEED_MAX and duration_s >= LIFT_MIN_DURATION_S:
                     lift_intervals.append((ts[start_i], ts[j]))
             i = j + 1
         else:
@@ -124,10 +126,6 @@ def _load_staged_entry(base: str, files: dict) -> dict | None:
         gnss_df = pd.read_csv(io.BytesIO(files["gnss_bytes"]))
     if imu_df is None and gnss_df is None:
         return None
-
-    # Liftfahrten aus IMU entfernen anhand GNSS-Zeitstempel
-    if imu_df is not None and gnss_df is not None:
-        imu_df = _strip_lifts_from_imu(imu_df, gnss_df)
 
     return {"key": new_key, "imu": imu_df, "gnss": gnss_df,
             "imu_path": None, "gnss_path": None, "meta": meta}
@@ -343,27 +341,14 @@ def show():
     for grp_val, grp_df in df_overview.groupby(group_col, sort=True):
         n = len(grp_df)
         with st.expander(f"{group_col}: **{grp_val}** — {n} Datei{'en' if n != 1 else ''}", expanded=False):
-            header = st.columns([2, 2, 2, 1, 1, 1.5, 1])
-            for h, lbl in zip(header, ["Datum", "Ort", "Position", "GNSS", "Sensor", "Download (bereinigt)", "Löschen"]):
+            header = st.columns([2, 2, 2, 1, 1, 1])
+            for h, lbl in zip(header, ["Datum", "Ort", "Position", "GNSS", "Sensor", "Löschen"]):
                 h.markdown(f"**{lbl}**")
             for _, row in grp_df.iterrows():
-                c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 2, 2, 1, 1, 1.5, 1])
+                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 1, 1, 1])
                 c1.write(row["Datum"]); c2.write(row["Ort"]); c3.write(row["Position"])
                 c4.write(row["GNSS"]); c5.write(row["Sensor-ID"])
-                # Download bereinigter IMU-CSV (ohne Liftfahrten)
-                sess_entry = sessions.get(row["key"])
-                if sess_entry is not None:
-                    imu_clean = sess_entry.get("imu")
-                    if imu_clean is not None:
-                        csv_bytes = imu_clean.to_csv(index=False).encode("utf-8")
-                        fname = f"{row['key']}_imuData_cut.csv"
-                        c6.download_button("⬇️ IMU", csv_bytes,
-                                           file_name=fname, mime="text/csv",
-                                           key=f"dl_imu_{row['key']}",
-                                           help="IMU ohne Liftfahrten herunterladen")
-                    else:
-                        c6.write("—")
-                if c7.button("🗑️", key=f"del_{row['key']}", help="Entfernen"):
+                if c6.button("🗑️", key=f"del_{row['key']}", help="Entfernen"):
                     sessions.pop(row["key"], None)
                     st.session_state["loaded_sessions"] = sessions
                     st.rerun()
