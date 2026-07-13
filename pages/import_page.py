@@ -164,6 +164,31 @@ def show():
             st.session_state["loaded_sessions"] = existing
             st.success(f"{len(loaded)} Sensor-Dateien geladen.")
 
+    # ── Protokoll laden (jumps.xlsx) ─────────────────────────────────────
+    st.subheader("Protokoll laden")
+    st.caption("jumps.xlsx mit Datum, Athlet ID, Run-Nummern, Tricks und Landungsarten.")
+    proto_uploaded = st.file_uploader(
+        "jumps.xlsx hochladen", type=["xlsx"],
+        key="proto_upload",
+        label_visibility="collapsed",
+    )
+    if proto_uploaded:
+        try:
+            df_proto = pd.read_excel(proto_uploaded)
+            st.session_state["protocol_df"] = df_proto
+            st.success(f"Protokoll geladen: {len(df_proto)} Einträge, "
+                       f"{df_proto['Athlet ID'].nunique()} Athleten")
+        except Exception as e:
+            st.error(f"Fehler beim Laden: {e}")
+
+    if st.session_state.get("protocol_df") is not None:
+        df_p = st.session_state["protocol_df"]
+        ids = sorted([x for x in df_p["Athlet ID"].dropna().unique()])
+        st.caption(f"Protokoll aktiv: {len(df_p)} Zeilen | Athlet IDs: {ids}")
+        if st.button("Protokoll entfernen", key="rm_proto"):
+            del st.session_state["protocol_df"]
+            st.rerun()
+
     st.divider()
 
     # ── Upload: Dateien wählen → sofort laden ─────────────────────────────

@@ -197,6 +197,44 @@ def _format_run_time(run_meta: dict) -> str:
         return ""
 
 
+def _find_protocol_run(protocol_df: pd.DataFrame, meta, run_meta: dict,
+                       athlet_id: str) -> dict | None:
+    """Findet Protokoll-Zeile für diesen Run (Athlet ID + Datum + nächste Zeit)."""
+    try:
+        date_val = int(str(meta.date))
+        athlet_float = float(athlet_id)
+        mask = (protocol_df["Datum"] == date_val) & (protocol_df["Athlet ID"] == athlet_float)
+        proto = protocol_df[mask].copy()
+        if proto.empty:
+            return None
+        start_us = run_meta.get("start_time_real_us")
+        if start_us is None:
+            return None
+        dt_run = pd.Timestamp(float(start_us) / 1e6, unit="s", tz="UTC").tz_convert("Europe/Zurich")
+        run_min = dt_run.hour * 60 + dt_run.minute
+
+        def to_minutes(t):
+            try:
+                if isinstance(t, (float, int)):
+                    return t * 24 * 60  # Excel-Zeit als Bruchteil des Tages
+                parts = str(t).strip().replace(".", ":").split(":")
+                return int(parts[0]) * 60 + int(parts[1])
+            except Exception:
+                return None
+
+        proto["_min"] = proto["ungefähre Startzeit"].apply(to_minutes)
+        proto = proto.dropna(subset=["_min"])
+        if proto.empty:
+            return None
+        proto["_diff"] = (proto["_min"] - run_min).abs()
+        closest = proto.loc[proto["_diff"].idxmin()]
+        if float(closest["_diff"]) > 10:
+            return None
+        return closest.to_dict()
+    except Exception:
+        return None
+
+
 CARD_W = 300   # px pro Sprung-Karte im Scroller
 CARD_H = 320   # px Höhe der Karte
 
@@ -347,17 +385,50 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     if label_key not in st.session_state:
         st.session_state[label_key] = {}
 
-    # Gespeicherte Labels in df übernehmen
+    # ── Protokoll-Lookup ─────────────────────────────────────────────────
+    proto_run = None
+    protocol_df = st.session_state.get("protocol_df")
+    proto_id = st.session_state.get(f"proto_athlet_{key}", "—")
+    if protocol_df is not None and proto_id and proto_id != "—" and meta is not None:
+        proto_run = _find_protocol_run(
+            protocol_df, meta, run_data.get("run_meta", {}), proto_id
+        )
+
+    # Gespeicherte Labels + Protokoll-Pre-fill in df übernehmen
     if not jumps_df.empty:
-        for _, row in jumps_df.iterrows():
+        for j_num, (_, row) in enumerate(jumps_df.iterrows(), 1):
             jid = row["jump_id"]
+            # Protokoll-Landungsart als Default (wenn noch nicht manuell gesetzt)
+            if proto_run is not None and jid not in st.session_state[label_key]:
+                land_col = f"Landungsart {j_num}"
+                proto_land = str(proto_run.get(land_col, "")).strip()
+                if proto_land in ["vorwärts", "switch", "crash"]:
+                    st.session_state[label_key][jid] = proto_land
             jumps_df.loc[jumps_df["jump_id"] == jid, "landing_type"] = \
                 st.session_state[label_key].get(jid, row.get("landing_type", ""))
 
     # ── Notiz + Landungsart-Tabelle (zuoberst) ───────────────────────────
     run_note_key = f"rn_{key}_{sess_id}_{run_id}"
+    # Protokoll-Tricks als Default wenn noch leer
     if run_note_key not in st.session_state:
-        st.session_state[run_note_key] = ""
+        if proto_run is not None:
+            tricks = " | ".join([
+                f"J{i}: {proto_run[f'Jump {i}']}"
+                for i in [1, 2, 3]
+                if str(proto_run.get(f"Jump {i}", "")).strip()
+                not in ["", "/", "kein Sprung", "nan", "NaN"]
+            ])
+            st.session_state[run_note_key] = tricks
+        else:
+            st.session_state[run_note_key] = ""
+
+    # Protokoll-Info anzeigen wenn Match gefunden
+    if proto_run is not None:
+        run_num = proto_run.get("Run Number", "?")
+        j1 = proto_run.get("Jump 1", ""); j2 = proto_run.get("Jump 2", ""); j3 = proto_run.get("Jump 3", "")
+        st.caption(f"📋 Protokoll Run {int(run_num) if run_num == run_num else '?'}: "
+                   f"J1: {j1}  |  J2: {j2}  |  J3: {j3}")
+
     st.text_input("Tricks / Notiz", placeholder="z.B. 540 switch, Landung nach links...",
                   key=run_note_key)
 
@@ -381,6 +452,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
             h.write(f"**{lbl}**")
 
+        _LAND_OPTIONS = ["", "vorwärts", "switch", "crash", "kein Sprung"]
         for _, row in jumps_df.iterrows():
             jid = row["jump_id"]
             c0, c1, c2, c3, c4, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
@@ -398,8 +470,8 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
                 st.session_state[comment_key][jid] = new_comment
             saved = st.session_state[label_key].get(jid, "")
             new_label = c7.selectbox(
-                "", ["", "vorwärts", "switch"],
-                index=["", "vorwärts", "switch"].index(saved) if saved in ["", "vorwärts", "switch"] else 0,
+                "", _LAND_OPTIONS,
+                index=_LAND_OPTIONS.index(saved) if saved in _LAND_OPTIONS else 0,
                 key=f"lb_{key}_{sess_id}_{run_id}_{jid}",
                 label_visibility="collapsed",
             )
@@ -672,6 +744,23 @@ def show():
             + '</div>',
             unsafe_allow_html=True,
         )
+
+        # Athlet ID für Protokoll-Verknüpfung
+        protocol_df_outer = st.session_state.get("protocol_df")
+        if protocol_df_outer is not None and "Athlet ID" in protocol_df_outer.columns:
+            proto_athlet_key = f"proto_athlet_{key}"
+            athlet_ids = ["—"] + [str(x) for x in
+                                   sorted(protocol_df_outer["Athlet ID"].dropna().unique())]
+            saved_proto = st.session_state.get(proto_athlet_key, "—")
+            if saved_proto not in athlet_ids:
+                saved_proto = "—"
+            st.selectbox(
+                "Athlet ID im Protokoll",
+                athlet_ids,
+                index=athlet_ids.index(saved_proto),
+                key=proto_athlet_key,
+                help="Verknüpft diesen Sensor mit einer Athlet-ID aus dem Protokoll für automatisches Vorausfüllen.",
+            )
 
         if not sessions_dict:
             st.warning("Keine Sessions erkannt.")
