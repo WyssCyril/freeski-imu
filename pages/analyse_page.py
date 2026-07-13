@@ -899,6 +899,33 @@ def show():
         col_ov2.metric("Runs mit Sprüngen", runs_with_jumps)
         col_ov3.metric("Sprünge erkannt", total_jumps)
 
+        # ── Download: IMU auf erkannte Runs zuschneiden ──────────────────
+        runs_with_meta_ts = [
+            sessions_dict[sel_session]["runs"][r].get("run_meta", {})
+            for r in run_ids
+            if sessions_dict[sel_session]["runs"][r].get("run_meta")
+        ]
+        if runs_with_meta_ts and session_df is not None and "imuTimestamp [us]" in session_df.columns:
+            margin_us = 30 * 1_000_000  # 30s Puffer
+            keep_mask = pd.Series(False, index=session_df.index)
+            for rm in runs_with_meta_ts:
+                s_us = rm.get("start_time_us"); e_us = rm.get("end_time_us")
+                if s_us and e_us:
+                    keep_mask |= (
+                        (session_df["imuTimestamp [us]"] >= float(s_us) - margin_us) &
+                        (session_df["imuTimestamp [us]"] <= float(e_us) + margin_us)
+                    )
+            df_cut = session_df[keep_mask].reset_index(drop=True)
+            pct = len(df_cut) / max(len(session_df), 1) * 100
+            cut_csv = df_cut.to_csv(index=False).encode("utf-8")
+            fname_cut = f"{key}_s{sel_session}_imuData_cut.csv"
+            st.download_button(
+                f"⬇️ IMU Cut ({pct:.0f}% der Session, {len(df_cut):,} Zeilen)",
+                cut_csv, file_name=fname_cut, mime="text/csv",
+                key=f"dl_cut_{key}_{sel_session}",
+                help="IMU auf erkannte Runs zugeschnitten — diese Datei beim nächsten Mal hochladen.",
+            )
+
         st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
 
         for run_id in run_ids:
