@@ -889,14 +889,11 @@ def show():
                 st.plotly_chart(fig_ov, use_container_width=True, config={"scrollZoom": True})
 
         # ── Session-Übersicht ────────────────────────────────────────────
-        total_jumps = sum(
-            len(sessions_dict[sel_session]["runs"][r].get("jumps") or [])
-            for r in run_ids
-        )
-        runs_with_jumps = sum(
-            1 for r in run_ids
-            if len(sessions_dict[sel_session]["runs"][r].get("jumps") or []) > 0
-        )
+        def _n_jumps(r):
+            j = sessions_dict[sel_session]["runs"][r].get("jumps")
+            return 0 if j is None or (hasattr(j, "empty") and j.empty) else len(j)
+        total_jumps = sum(_n_jumps(r) for r in run_ids)
+        runs_with_jumps = sum(1 for r in run_ids if _n_jumps(r) > 0)
         col_ov1, col_ov2, col_ov3 = st.columns(3)
         col_ov1.metric("Runs", len(run_ids))
         col_ov2.metric("Runs mit Sprüngen", runs_with_jumps)
