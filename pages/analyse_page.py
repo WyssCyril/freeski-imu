@@ -888,6 +888,20 @@ def show():
                 fig_ov.update_xaxes(rangeslider=dict(visible=True, thickness=0.04), row=n_rows, col=1)
                 st.plotly_chart(fig_ov, use_container_width=True, config={"scrollZoom": True})
 
+        # ── Session-Übersicht ────────────────────────────────────────────
+        total_jumps = sum(
+            len(sessions_dict[sel_session]["runs"][r].get("jumps") or [])
+            for r in run_ids
+        )
+        runs_with_jumps = sum(
+            1 for r in run_ids
+            if len(sessions_dict[sel_session]["runs"][r].get("jumps") or []) > 0
+        )
+        col_ov1, col_ov2, col_ov3 = st.columns(3)
+        col_ov1.metric("Runs", len(run_ids))
+        col_ov2.metric("Runs mit Sprüngen", runs_with_jumps)
+        col_ov3.metric("Sprünge erkannt", total_jumps)
+
         st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
 
         for run_id in run_ids:
