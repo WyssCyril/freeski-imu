@@ -343,14 +343,27 @@ def show():
     for grp_val, grp_df in df_overview.groupby(group_col, sort=True):
         n = len(grp_df)
         with st.expander(f"{group_col}: **{grp_val}** — {n} Datei{'en' if n != 1 else ''}", expanded=False):
-            header = st.columns([2, 2, 2, 1, 1, 1])
-            for h, lbl in zip(header, ["Datum", "Ort", "Position", "GNSS", "Sensor", "Löschen"]):
+            header = st.columns([2, 2, 2, 1, 1, 1.5, 1])
+            for h, lbl in zip(header, ["Datum", "Ort", "Position", "GNSS", "Sensor", "Download (bereinigt)", "Löschen"]):
                 h.markdown(f"**{lbl}**")
             for _, row in grp_df.iterrows():
-                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 1, 1, 1])
+                c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 2, 2, 1, 1, 1.5, 1])
                 c1.write(row["Datum"]); c2.write(row["Ort"]); c3.write(row["Position"])
                 c4.write(row["GNSS"]); c5.write(row["Sensor-ID"])
-                if c6.button("🗑️", key=f"del_{row['key']}", help="Entfernen"):
+                # Download bereinigter IMU-CSV (ohne Liftfahrten)
+                sess_entry = sessions.get(row["key"])
+                if sess_entry is not None:
+                    imu_clean = sess_entry.get("imu")
+                    if imu_clean is not None:
+                        csv_bytes = imu_clean.to_csv(index=False).encode("utf-8")
+                        fname = f"{row['key']}_imuData_bereinigt.csv"
+                        c6.download_button("⬇️ IMU", csv_bytes,
+                                           file_name=fname, mime="text/csv",
+                                           key=f"dl_imu_{row['key']}",
+                                           help="IMU ohne Liftfahrten herunterladen")
+                    else:
+                        c6.write("—")
+                if c7.button("🗑️", key=f"del_{row['key']}", help="Entfernen"):
                     sessions.pop(row["key"], None)
                     st.session_state["loaded_sessions"] = sessions
                     st.rerun()
