@@ -356,7 +356,7 @@ def show():
                     imu_clean = sess_entry.get("imu")
                     if imu_clean is not None:
                         csv_bytes = imu_clean.to_csv(index=False).encode("utf-8")
-                        fname = f"{row['key']}_imuData_bereinigt.csv"
+                        fname = f"{row['key']}_imuData_cut.csv"
                         c6.download_button("⬇️ IMU", csv_bytes,
                                            file_name=fname, mime="text/csv",
                                            key=f"dl_imu_{row['key']}",
