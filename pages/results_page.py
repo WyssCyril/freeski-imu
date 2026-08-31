@@ -1,5 +1,5 @@
 """
-Ergebnisse: Gespeicherte Sprungauswertungen pro Athlet/Sensor, Excel-Export.
+Ergebnisse: Gespeicherte Sprungauswertungen pro Athlet/Sensor, Excel-Export + Import.
 """
 import io
 import streamlit as st
@@ -7,6 +7,84 @@ import pandas as pd
 import numpy as np
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Spaltenmapping Excel → interne Spalten (für Statistik-Seite)
+_EXCEL_TO_INTERNAL = {
+    "Peak (g)":      "peak_res_g",
+    "Peak roh (g)":  "peak_res_g_raw",
+    "Flugzeit (s)":  "flight_time_s",
+    "TTP (s)":       "time_to_peak_s",
+    "RFD (g/s)":     "rfd_g_per_s",
+    "Impuls (g·s)":  "impulse_net_g_s",
+    "16g geclippt":  "clipped_16g",
+    "Landungsart":   "landing_type",
+    "Sprung":        "jump_id",
+    "Kommentar":     "comment",
+}
+
+
+class _SimpleMeta:
+    """Minimales Meta-Objekt wie admos_parser.SensorMeta, aber aus Excel gebaut."""
+    def __init__(self, athlete_code, date, location, position_label):
+        self.athlete_code   = athlete_code
+        self.date           = date
+        self.location       = location
+        self.position_label = position_label
+        self.sensor_id      = ""
+
+
+def _import_excel(file) -> int:
+    """
+    Liest Batch-Excel (Sheet 'Einzelsprünge') und fügt Ergebnisse in
+    st.session_state['jump_results'] ein. Gibt Anzahl importierter Sprünge zurück.
+    """
+    try:
+        df = pd.read_excel(file, sheet_name="Einzelsprünge")
+    except Exception as e:
+        st.error(f"Fehler beim Lesen: {e}")
+        return 0
+
+    if df.empty:
+        return 0
+
+    # Interne Spaltennamen hinzufügen
+    df_int = df.rename(columns=_EXCEL_TO_INTERNAL)
+
+    # Pro Athlet + Position eine synthetische jump_results-Gruppe anlegen
+    if "jump_results" not in st.session_state:
+        st.session_state["jump_results"] = {}
+
+    count = 0
+    group_cols = [c for c in ["Athlet", "Datum", "Ort", "Position"] if c in df_int.columns]
+    for group_vals, grp in df_int.groupby(group_cols, sort=True):
+        if not isinstance(group_vals, tuple):
+            group_vals = (group_vals,)
+        vals = dict(zip(group_cols, group_vals))
+
+        athlet   = vals.get("Athlet", "?")
+        datum    = vals.get("Datum", "")
+        ort      = vals.get("Ort", "")
+        position = vals.get("Position", "")
+
+        # Datum in YYYYMMDD-Format zurück für SensorMeta
+        try:
+            date_int = pd.to_datetime(datum, dayfirst=True).strftime("%Y%m%d")
+        except Exception:
+            date_int = str(datum)
+
+        meta  = _SimpleMeta(str(athlet), date_int, ort, position)
+        key   = f"import_{athlet}_{date_int}_{ort}_{position}"
+
+        jumps_df = grp.reset_index(drop=True)
+
+        st.session_state["jump_results"][key] = {
+            "jumps":    jumps_df,
+            "meta":     meta,
+            "run_note": "",
+        }
+        count += len(grp)
+
+    return count
 
 
 def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
@@ -47,11 +125,55 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
 def show():
     st.header("Ergebnisse")
 
+    # ── Batch-Import ──────────────────────────────────────────────────────
+    with st.expander("📥 Frühere Batches importieren", expanded=False):
+        st.caption(
+            "Lade hier Excel-Dateien hoch, die du in einem früheren Batch exportiert hast. "
+            "Die Daten werden mit den aktuellen Auswertungen zusammengeführt."
+        )
+        uploaded_batches = st.file_uploader(
+            "Excel-Dateien hochladen",
+            type=["xlsx"],
+            accept_multiple_files=True,
+            key="batch_import_upload",
+            label_visibility="collapsed",
+        )
+        if uploaded_batches:
+            import_key = "batch_imported_" + "_".join(f.name for f in uploaded_batches)
+            if import_key not in st.session_state:
+                total = 0
+                for f in uploaded_batches:
+                    n = _import_excel(f)
+                    total += n
+                st.session_state[import_key] = total
+                st.rerun()
+            else:
+                st.success(f"{st.session_state[import_key]} Sprünge aus {len(uploaded_batches)} Datei(en) importiert.")
+
+        imported_keys = [k for k in st.session_state.get("jump_results", {}) if k.startswith("import_")]
+        if imported_keys:
+            n_imp = sum(
+                len(st.session_state["jump_results"][k]["jumps"])
+                for k in imported_keys
+                if st.session_state["jump_results"][k].get("jumps") is not None
+            )
+            st.info(f"Aktuell {n_imp} importierte Sprünge aus {len(imported_keys)} Batch-Gruppen geladen.")
+            if st.button("Importierte Daten löschen", key="clear_imports"):
+                for k in imported_keys:
+                    del st.session_state["jump_results"][k]
+                # Auch Import-Keys löschen
+                for k in list(st.session_state.keys()):
+                    if k.startswith("batch_imported_"):
+                        del st.session_state[k]
+                st.rerun()
+
+    st.divider()
+
     sessions_loaded = st.session_state.get("loaded_sessions", {})
     jump_results = st.session_state.get("jump_results", {})
 
     if not jump_results:
-        st.info("Noch keine Auswertungen vorhanden. Zuerst Sprunganalyse durchführen.")
+        st.info("Noch keine Auswertungen vorhanden. Zuerst Sprunganalyse durchführen oder Batch importieren.")
         return
 
     df = _collect_results(sessions_loaded)

@@ -389,10 +389,44 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     proto_run = None
     protocol_df = st.session_state.get("protocol_df")
     proto_id = st.session_state.get(f"proto_athlet_{key}", "—")
+    manual_proto_key = f"manual_proto_{key}_{sess_id}_{run_id}"
+
     if protocol_df is not None and proto_id and proto_id != "—" and meta is not None:
         proto_run = _find_protocol_run(
             protocol_df, meta, run_data.get("run_meta", {}), proto_id
         )
+        # Manueller Override: Protokoll-Zeile manuell wählen wenn kein Auto-Match
+        try:
+            date_val = int(str(meta.date))
+            athlet_float = float(proto_id)
+            proto_rows = protocol_df[
+                (protocol_df["Datum"] == date_val) &
+                (protocol_df["Athlet ID"] == athlet_float)
+            ].copy()
+        except Exception:
+            proto_rows = pd.DataFrame()
+
+        if not proto_rows.empty:
+            run_options = ["— Auto" if proto_run is not None else "— Kein Match"] + [
+                f"Run {int(r['Run Number'])} ({r.get('ungefähre Startzeit', '')})"
+                for _, r in proto_rows.iterrows()
+            ]
+            saved_manual = st.session_state.get(manual_proto_key, run_options[0])
+            if saved_manual not in run_options:
+                saved_manual = run_options[0]
+            sel = st.selectbox(
+                "Protokoll-Run",
+                run_options,
+                index=run_options.index(saved_manual),
+                key=manual_proto_key,
+                help="Automatisch gesetzt wenn GPS-Zeit stimmt — hier manuell überschreiben.",
+            )
+            if sel != run_options[0]:
+                # Manuellen Row holen
+                run_num_sel = int(sel.split("Run ")[1].split(" ")[0])
+                manual_row = proto_rows[proto_rows["Run Number"] == run_num_sel]
+                if not manual_row.empty:
+                    proto_run = manual_row.iloc[0].to_dict()
 
     # Gespeicherte Labels + Protokoll-Pre-fill in df übernehmen
     if not jumps_df.empty:
@@ -591,6 +625,40 @@ def show():
         st.warning("Zuerst Daten laden (Tab 'Daten laden').")
         return
 
+    # ── Speicher freigeben ────────────────────────────────────────────────
+    with st.expander("🧹 Speicher freigeben", expanded=False):
+        st.caption(
+            "Nach der Analyse: IMU-Rohdaten aus dem Speicher löschen. "
+            "Sprungresultate bleiben erhalten und können im Tab 'Ergebnisse' exportiert werden. "
+            "Danach kannst du den nächsten Athleten hochladen."
+        )
+        # Schätze Speicherverbrauch der Rohdaten
+        raw_keys = [k for k, v in sessions_loaded.items()
+                    if v.get("imu") is not None or v.get("imu_path")]
+        n_pipeline = sum(1 for k in st.session_state if k.startswith("pipeline_v"))
+        jump_results = st.session_state.get("jump_results", {})
+        n_jumps = sum(
+            len(v["jumps"]) for v in jump_results.values()
+            if v.get("jumps") is not None and not v["jumps"].empty
+        )
+        col_i, col_b = st.columns(2)
+        col_i.metric("Sensoren geladen", len(raw_keys))
+        col_b.metric("Sprünge gespeichert", n_jumps)
+
+        if st.button("🧹 Rohdaten löschen (Resultate behalten)", type="primary",
+                     key="btn_free_memory"):
+            # IMU-DataFrames aus loaded_sessions entfernen
+            for k in list(sessions_loaded.keys()):
+                sessions_loaded[k].pop("imu", None)
+                sessions_loaded[k].pop("gnss", None)
+                sessions_loaded[k].pop("imu_path", None)
+            # Pipeline-Caches löschen (enthalten df_imu/df_session)
+            for k in list(st.session_state.keys()):
+                if k.startswith("pipeline_v"):
+                    del st.session_state[k]
+            st.success("Rohdaten gelöscht. Sprungresultate sind im Tab 'Ergebnisse' verfügbar.")
+            st.rerun()
+
     # ── Athleten-Auswahl ─────────────────────────────────────────────────
     # Alle verfügbaren Athleten ermitteln
     athlete_groups: dict[str, list[str]] = {}
@@ -689,6 +757,48 @@ def show():
 
     if not results:
         return
+
+    # ── Protokoll-Landungsarten automatisch für alle Runs befüllen ────────
+    protocol_df = st.session_state.get("protocol_df")
+    for key in sel_keys:
+        meta    = sessions_loaded[key].get("meta")
+        proto_id = st.session_state.get(f"proto_athlet_{key}", "—")
+        if protocol_df is None or proto_id == "—" or meta is None:
+            continue
+        result = results[key]
+        for sess_id, sess_data in result["sessions"].items():
+            for run_id, run_data in sess_data["runs"].items():
+                jumps_df = run_data.get("jumps")
+                if jumps_df is None or jumps_df.empty:
+                    continue
+                label_key = f"labels_{key}_{sess_id}_{run_id}"
+                if label_key not in st.session_state:
+                    st.session_state[label_key] = {}
+                proto_run = _find_protocol_run(
+                    protocol_df, meta, run_data.get("run_meta", {}), proto_id
+                )
+                if proto_run is None:
+                    continue
+                for j_num, (idx, row) in enumerate(jumps_df.iterrows(), 1):
+                    jid = row["jump_id"]
+                    if jid not in st.session_state[label_key]:
+                        land_col = f"Landungsart {j_num}"
+                        proto_land = str(proto_run.get(land_col, "")).strip()
+                        if proto_land in ["vorwärts", "switch", "crash"]:
+                            st.session_state[label_key][jid] = proto_land
+                            result["sessions"][sess_id]["runs"][run_id]["jumps"].loc[
+                                idx, "landing_type"
+                            ] = proto_land
+                # jump_results direkt befüllen (ohne Expander öffnen)
+                run_note_key = f"rn_{key}_{sess_id}_{run_id}"
+                jr_key = f"{key}_{sess_id}_{run_id}"
+                if "jump_results" not in st.session_state:
+                    st.session_state["jump_results"] = {}
+                st.session_state["jump_results"][jr_key] = {
+                    "jumps":    run_data["jumps"],
+                    "meta":     meta,
+                    "run_note": st.session_state.get(run_note_key, ""),
+                }
 
     # ── Overlay-Plot ──────────────────────────────────────────────────────
     if len(sel_keys) > 1:
