@@ -102,6 +102,9 @@ def classify_sensor_file(filename: str) -> str | None:
     if "-checkpoint" in name.lower():
         return None
     stem = Path(filename).stem  # ohne .csv
+    # "_cut" Suffix entfernen (z.B. _imuData_cut → _imuData)
+    if stem.lower().endswith("_cut"):
+        stem = stem[:-4]
     last = stem.rsplit("_", 1)[-1].lower()
     if last in ("imu", "imudata"):
         return "imu"
@@ -113,6 +116,8 @@ def classify_sensor_file(filename: str) -> str | None:
 def sensor_file_base(filepath: str) -> str:
     """Gibt den Basis-Schlüssel zurück (alles ohne Typ-Suffix und Extension)."""
     stem = Path(filepath).stem
+    if stem.lower().endswith("_cut"):
+        stem = stem[:-4]
     last = stem.rsplit("_", 1)[-1].lower()
     if last in ("imu", "imudata", "gnss", "gnssdata"):
         return stem.rsplit("_", 1)[0]
