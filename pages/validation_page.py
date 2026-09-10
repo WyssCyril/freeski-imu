@@ -85,22 +85,47 @@ def _nils_to_cyril_cols(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data
-def load_validation_data() -> pd.DataFrame:
-    """Lädt und kombiniert Cyril + Nils Validierungsdaten."""
+def _load_from_paths() -> pd.DataFrame:
+    """Lädt Validierungsdaten aus lokalem Pfad (nur wenn vorhanden)."""
     path_c = f"{VAL_DIR}/Validierung Cyril.xlsx"
     path_n = f"{VAL_DIR}/Validierung Nils.xlsx"
-
     df_c = pd.read_excel(path_c, sheet_name="Validierung")
     df_n = pd.read_excel(path_n, sheet_name="Validierung")
     df_n = _nils_to_cyril_cols(df_n)
-
-    # peak_res_g_KMP für Nils berechnen (fehlt im Validierungssheet)
     if "peak_res_g_KMP" not in df_n.columns or df_n["peak_res_g_KMP"].isna().all():
         df_n["peak_res_g_KMP"] = df_n["peak_landing_F"] / (df_n["body_mass"] * 9.81)
-
     df = pd.concat([df_c, df_n], ignore_index=True)
     df = df[df["exercise"].notna()]
     return df
+
+
+def _load_from_upload(files: list) -> pd.DataFrame:
+    """Lädt Validierungsdaten aus hochgeladenen Excel-Dateien."""
+    dfs = []
+    for f in files:
+        try:
+            df = pd.read_excel(f, sheet_name="Validierung")
+            name = f.name.lower()
+            if "nils" in name:
+                df = _nils_to_cyril_cols(df)
+                if "peak_res_g_KMP" not in df.columns or df["peak_res_g_KMP"].isna().all():
+                    if "peak_landing_F" in df.columns and "body_mass" in df.columns:
+                        df["peak_res_g_KMP"] = df["peak_landing_F"] / (df["body_mass"] * 9.81)
+            dfs.append(df)
+        except Exception as e:
+            st.warning(f"Fehler beim Lesen von {f.name}: {e}")
+    if not dfs:
+        return pd.DataFrame()
+    df_all = pd.concat(dfs, ignore_index=True)
+    return df_all[df_all["exercise"].notna()] if "exercise" in df_all.columns else df_all
+
+
+def load_validation_data() -> pd.DataFrame:
+    """Lädt Validierungsdaten: lokal wenn vorhanden, sonst Upload."""
+    if _VAL_DIR_EXISTS:
+        return _load_from_paths()
+    # Auf Streamlit Cloud: Upload anbieten
+    return pd.DataFrame()  # wird in show() durch Upload ersetzt
 
 
 def _cv_label(cv: float) -> str:
@@ -621,14 +646,31 @@ def show():
     st.header("Validierung")
     st.caption("Kraftmessplatte (Referenz) vs. IMU-Sensoren — Drop Jump Landings, Magglingen 2026")
 
-    try:
-        df_all = load_validation_data()
-    except FileNotFoundError as e:
-        st.error(f"Validierungsdatei nicht gefunden: {e}")
-        return
-    except Exception as e:
-        st.error(f"Fehler beim Laden: {e}")
-        return
+    # ── Daten laden: lokal oder Upload ────────────────────────────────────
+    if _VAL_DIR_EXISTS:
+        try:
+            df_all = _load_from_paths()
+        except Exception as e:
+            st.error(f"Fehler beim Laden: {e}")
+            return
+    else:
+        st.info(
+            "Validierungsdaten nicht gefunden. Bitte die Excel-Dateien hochladen "
+            "(Validierung Cyril.xlsx und/oder Validierung Nils.xlsx, "
+            "Sheet-Name: 'Validierung')."
+        )
+        uploaded = st.file_uploader(
+            "Validierungs-Excel hochladen",
+            type=["xlsx"],
+            accept_multiple_files=True,
+            key="val_upload",
+        )
+        if not uploaded:
+            return
+        df_all = _load_from_upload(uploaded)
+        if df_all.empty:
+            st.warning("Keine auswertbaren Daten in den hochgeladenen Dateien.")
+            return
 
     # ── Globale Filter ────────────────────────────────────────────────────
     c1, c2 = st.columns(2)
