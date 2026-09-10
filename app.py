@@ -113,12 +113,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-if _is_local:
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten", "Validierung"])
-else:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"])
-    tab6 = None
+# ── Bereichswahl ──────────────────────────────────────────────────────────────
+if "bereich" not in st.session_state:
+    st.session_state["bereich"] = "analyse"
 
 def _safe_show(fn, *args, **kwargs):
     try:
@@ -127,30 +124,49 @@ def _safe_show(fn, *args, **kwargs):
         st.error(f"Fehler: {e}")
         st.exception(e)
 
-with tab1:
-    from pages import import_page
-    _safe_show(import_page.show)
+bereich = st.session_state["bereich"]
 
-with tab2:
-    from pages import analyse_page
-    _safe_show(analyse_page.show)
+if bereich == "validierung":
+    # ── Validierungsbereich ────────────────────────────────────────────
+    col_back, col_title = st.columns([1, 8])
+    if col_back.button("Zuruck zur Analyse"):
+        st.session_state["bereich"] = "analyse"
+        st.rerun()
+    col_title.subheader("Validierung — Sensor vs. Kraftmessplatte")
+    from pages import validation_page
+    _safe_show(validation_page.show)
+
+else:
+    # ── Sprunganalyse ──────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"])
+
+    with tab1:
+        from pages import import_page
+        _safe_show(import_page.show)
+
+    with tab2:
+        from pages import analyse_page
+        _safe_show(analyse_page.show)
+        st.divider()
+        from pages import stats_page
+        _safe_show(stats_page.show)
+
+    with tab3:
+        from pages import results_page
+        _safe_show(results_page.show)
+
+    with tab4:
+        from pages import map_page
+        _safe_show(map_page.show)
+
+    with tab5:
+        from pages import gnss_page
+        _safe_show(gnss_page.show)
+
+    # ── Validierung Button unten ───────────────────────────────────────
     st.divider()
-    from pages import stats_page
-    _safe_show(stats_page.show)
-
-with tab3:
-    from pages import results_page
-    _safe_show(results_page.show)
-
-with tab4:
-    from pages import map_page
-    _safe_show(map_page.show)
-
-with tab5:
-    from pages import gnss_page
-    _safe_show(gnss_page.show)
-
-if tab6 is not None:
-    with tab6:
-        from pages import validation_page
-        _safe_show(validation_page.show)
+    st.markdown("**Validierung**")
+    st.caption("Rohdaten-Vergleich IMU vs. Kraftmessplatte zur Qualitätssicherung.")
+    if st.button("Validierung öffnen"):
+        st.session_state["bereich"] = "validierung"
+        st.rerun()
