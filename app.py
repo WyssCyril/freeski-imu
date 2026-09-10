@@ -11,7 +11,7 @@ st.set_page_config(
 import os as _os_check
 _is_local = _os_check.path.exists("/Users/cyrilwyss/AAMasterarbeit")
 
-if not _is_local:
+if False and not _is_local:
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     if not st.session_state["authenticated"]:
