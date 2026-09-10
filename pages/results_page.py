@@ -126,7 +126,7 @@ def show():
     st.header("Ergebnisse")
 
     # ── Batch-Import ──────────────────────────────────────────────────────
-    with st.expander("📥 Frühere Batches importieren", expanded=False):
+    with st.expander("Frühere Batches importieren", expanded=False):
         st.caption(
             "Lade hier Excel-Dateien hoch, die du in einem früheren Batch exportiert hast. "
             "Die Daten werden mit den aktuellen Auswertungen zusammengeführt."

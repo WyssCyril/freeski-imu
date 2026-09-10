@@ -229,9 +229,9 @@ def show():
             for base in list(staged.keys()):
                 has_imu  = "imu_bytes"  in staged[base]
                 has_gnss = "gnss_bytes" in staged[base]
-                badges   = ("IMU ✓" if has_imu else "IMU —") + "  |  " + ("GNSS ✓" if has_gnss else "GNSS —")
+                badges   = ("IMU OK" if has_imu else "IMU —") + "  |  " + ("GNSS OK" if has_gnss else "GNSS —")
 
-                with st.expander(f"📄 {base}   —   {badges}", expanded=True):
+                with st.expander(f"{base}   —   {badges}", expanded=True):
                     if has_imu:
                         c1, c2, c3, c4 = st.columns(4)
                         c1.date_input("Datum",   key=f"datum_{base}")
@@ -247,7 +247,7 @@ def show():
                         c3.text_input("Athlet", key=f"athlet_{base}", placeholder="z.B. 01")
                         st.session_state[f"pos_{base}"] = "—"
 
-            if st.button("✅ Alle laden", type="primary"):
+            if st.button("Alle laden", type="primary"):
                 loaded = {}
                 errors = []
                 for base, files in staged.items():
@@ -286,7 +286,7 @@ def show():
             "key": key, "Athlet": m.athlete_code, "Datum": m.date,
             "Ort": m.location, "Sensor-ID": m.sensor_id,
             "Position": m.position_label,
-            "GNSS": "✓" if s["gnss"] is not None else "—",
+            "GNSS": "OK" if s["gnss"] is not None else "—",
             "Athlet_Ort": f"{m.athlete_code} | {m.location}",
         })
     df_overview = pd.DataFrame(rows)
@@ -348,7 +348,7 @@ def show():
                 c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 1, 1, 1])
                 c1.write(row["Datum"]); c2.write(row["Ort"]); c3.write(row["Position"])
                 c4.write(row["GNSS"]); c5.write(row["Sensor-ID"])
-                if c6.button("🗑️", key=f"del_{row['key']}", help="Entfernen"):
+                if c6.button("x", key=f"del_{row['key']}", help="Entfernen"):
                     sessions.pop(row["key"], None)
                     st.session_state["loaded_sessions"] = sessions
                     st.rerun()

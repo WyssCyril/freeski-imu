@@ -273,7 +273,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         la_t   = float(t_all[min(int(row["landing_idx"]),  len(t_all)-1)])
 
         color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
-        title_txt = f"{jid}  {peak:.1f}g  {flight:.2f}s{'  ⚠️' if clipped else ''}"
+        title_txt = f"{jid}  {peak:.1f}g  {flight:.2f}s{'  (!)' if clipped else ''}"
         lt_label  = lt if lt else "—"
 
         fig = go.Figure()
@@ -342,7 +342,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
      background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:white;border-radius:8px;padding:10px;width:90%;max-width:900px;position:relative;">
     <button onclick="closeModal()" style="position:absolute;top:8px;right:12px;font-size:20px;
-            border:none;background:none;cursor:pointer;">✕</button>
+            border:none;background:none;cursor:pointer;">x</button>
     <div id="modal-plot" style="width:100%;height:500px;"></div>
   </div>
 </div>
@@ -460,7 +460,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     if proto_run is not None:
         run_num = proto_run.get("Run Number", "?")
         j1 = proto_run.get("Jump 1", ""); j2 = proto_run.get("Jump 2", ""); j3 = proto_run.get("Jump 3", "")
-        st.caption(f"📋 Protokoll Run {int(run_num) if run_num == run_num else '?'}: "
+        st.caption(f"Protokoll Run {int(run_num) if run_num == run_num else '?'}: "
                    f"J1: {j1}  |  J2: {j2}  |  J3: {j3}")
 
     st.text_input("Tricks / Notiz", placeholder="z.B. 540 switch, Landung nach links...",
@@ -492,10 +492,10 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
             c0, c1, c2, c3, c4, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
             c0.write(jid)
             c1.write(f"{row['flight_time_s']:.3f}")
-            c2.write(f"{'⚠️ ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
+            c2.write(f"{'(!) ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
             c3.write(f"{row.get('time_to_peak_s', '—')}")
             c4.write(f"{row.get('rfd_g_per_s', '—')}")
-            c5.write("⚠️" if row.get("clipped_16g") else "✓")
+            c5.write("(!)" if row.get("clipped_16g") else "OK")
             saved_comment = st.session_state[comment_key].get(jid, "")
             new_comment = c8.text_input("", value=saved_comment, placeholder="Kommentar...",
                                          key=f"cmt_{key}_{sess_id}_{run_id}_{jid}",
@@ -626,7 +626,7 @@ def show():
         return
 
     # ── Speicher freigeben ────────────────────────────────────────────────
-    with st.expander("🧹 Speicher freigeben", expanded=False):
+    with st.expander("Speicher freigeben", expanded=False):
         st.caption(
             "Nach der Analyse: IMU-Rohdaten aus dem Speicher löschen. "
             "Sprungresultate bleiben erhalten und können im Tab 'Ergebnisse' exportiert werden. "
@@ -645,7 +645,7 @@ def show():
         col_i.metric("Sensoren geladen", len(raw_keys))
         col_b.metric("Sprünge gespeichert", n_jumps)
 
-        if st.button("🧹 Rohdaten löschen (Resultate behalten)", type="primary",
+        if st.button("Rohdaten löschen (Resultate behalten)", type="primary",
                      key="btn_free_memory"):
             # IMU-DataFrames aus loaded_sessions entfernen
             for k in list(sessions_loaded.keys()):
@@ -981,7 +981,7 @@ def show():
                         )
                     fig_ov.add_vline(
                         x=t_start, line_dash="dash", line_color=rcolor, line_width=1.5,
-                        annotation_text=f"▶ {rid}", annotation_position="top left",
+                        annotation_text=f"> {rid}", annotation_position="top left",
                         annotation_font=dict(size=10, color=rcolor),
                         row=1, col=1,
                     )
@@ -1030,7 +1030,7 @@ def show():
             cut_csv = df_cut.to_csv(index=False).encode("utf-8")
             fname_cut = f"{key}_s{sel_session}_imuData_cut.csv"
             st.download_button(
-                f"⬇️ IMU Cut ({pct:.0f}% der Session, {len(df_cut):,} Zeilen)",
+                f"IMU Cut ({pct:.0f}% der Session, {len(df_cut):,} Zeilen)",
                 cut_csv, file_name=fname_cut, mime="text/csv",
                 key=f"dl_cut_{key}_{sel_session}",
                 help="IMU auf erkannte Runs zugeschnitten — diese Datei beim nächsten Mal hochladen.",
@@ -1046,7 +1046,7 @@ def show():
             dur        = run_meta.get("duration_s", "—")
             alt        = run_meta.get("alt_drop_m", "—")
             start_time = _format_run_time(run_meta)
-            time_str   = f"  🕐 {start_time}" if start_time else ""
+            time_str   = f"  {start_time}" if start_time else ""
             exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
                           + (f"| {dur} s  | Δ{alt} m" if run_meta else ""))
 

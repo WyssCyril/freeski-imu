@@ -3,7 +3,7 @@ import socket
 
 st.set_page_config(
     page_title="Impactmessung Park & Pipe",
-    page_icon="⛷️",
+    page_icon="IMU",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
