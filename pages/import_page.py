@@ -191,7 +191,8 @@ def show():
 
     # ── Upload: Dateien wählen → sofort laden ─────────────────────────────
     st.subheader("Dateien hochladen")
-    st.caption("IMU- und GNSS-Dateien wählen — werden sofort geladen. Mehrere Dateien gleichzeitig möglich.")
+    st.caption("IMU-Cut + GNSS eines Athleten wählen — Datum, Ort, Athlet und Position werden "
+               "aus dem Dateinamen gelesen, die Sprunganalyse startet direkt.")
 
     uploaded = st.file_uploader(
         "CSV", type=["csv"], accept_multiple_files=True,
@@ -199,77 +200,43 @@ def show():
     )
 
     if uploaded:
-        staged: dict = st.session_state.get("_upload_staged", {})
-        newly_added = []
+        staged: dict = st.session_state.setdefault("_upload_staged", {})
+        done: set = st.session_state.setdefault("_upload_done", set())
+        changed = set()
         for f in uploaded:
+            if f.name in done:
+                continue
             kind = classify_sensor_file(f.name)
             if kind is None:
                 st.warning(f"Nicht erkannt (*_IMU.csv / *_GNSS.csv erwartet): **{f.name}**")
+                done.add(f.name)
                 continue
             base = sensor_file_base(f.name)
-            bkey = f"{kind}_bytes"
-            is_new = base not in staged or bkey not in staged[base]
-            if is_new:
-                f.seek(0)
-                staged.setdefault(base, {})[bkey] = f.read()
-                newly_added.append(base)
-            # Metadaten immer aus Dateiname setzen — bei jedem Render aktuell halten
-            m = _meta_from_base(base)
-            st.session_state[f"datum_{base}"]  = m["date"]
-            st.session_state[f"ort_{base}"]    = m["ort"]
-            st.session_state[f"athlet_{base}"] = m["athlet"]
-            st.session_state[f"pos_{base}"]    = m["pos"]
-        st.session_state["_upload_staged"] = staged
+            f.seek(0)
+            staged.setdefault(base, {})[f"{kind}_bytes"] = f.read()
+            done.add(f.name)
+            changed.add(base)
 
-        # Alle staged Einträge anzeigen — kompakt, editierbar
-        staged = st.session_state.get("_upload_staged", {})
-        if staged:
-            st.markdown(f"**{len(staged)} Sensor(en) erkannt** — Metadaten prüfen, dann laden:")
-
-            for base in list(staged.keys()):
-                has_imu  = "imu_bytes"  in staged[base]
-                has_gnss = "gnss_bytes" in staged[base]
-                badges   = ("IMU OK" if has_imu else "IMU —") + "  |  " + ("GNSS OK" if has_gnss else "GNSS —")
-
-                with st.expander(f"{base}   —   {badges}", expanded=True):
-                    if has_imu:
-                        c1, c2, c3, c4 = st.columns(4)
-                        c1.date_input("Datum",   key=f"datum_{base}")
-                        c2.text_input("Ort",     key=f"ort_{base}",   placeholder="z.B. Laax")
-                        c3.text_input("Athlet",  key=f"athlet_{base}", placeholder="z.B. 01")
-                        pos_idx = POS_OPTIONS.index(st.session_state.get(f"pos_{base}", "Bauch")) \
-                                  if st.session_state.get(f"pos_{base}", "Bauch") in POS_OPTIONS else 0
-                        c4.selectbox("Position", POS_OPTIONS, index=pos_idx, key=f"pos_{base}")
-                    else:
-                        c1, c2, c3 = st.columns(3)
-                        c1.date_input("Datum",  key=f"datum_{base}")
-                        c2.text_input("Ort",    key=f"ort_{base}",    placeholder="z.B. Laax")
-                        c3.text_input("Athlet", key=f"athlet_{base}", placeholder="z.B. 01")
-                        st.session_state[f"pos_{base}"] = "—"
-
-            if st.button("Alle laden", type="primary"):
-                loaded = {}
-                errors = []
-                for base, files in staged.items():
-                    try:
-                        entry = _load_staged_entry(base, files)
-                        if entry:
-                            loaded[entry.pop("key")] = entry
-                    except Exception as e:
-                        errors.append(f"{base}: {e}")
-                if loaded:
-                    existing = st.session_state.get("loaded_sessions", {})
-                    existing.update(loaded)
-                    st.session_state["loaded_sessions"] = existing
-                    st.session_state["_upload_staged"] = {}
-                    for err in errors:
-                        st.warning(f"Fehler: {err}")
-                    st.rerun()
-                else:
-                    for err in errors:
-                        st.warning(f"Fehler: {err}")
-                    if not errors:
-                        st.warning("Keine Dateien geladen — prüfe die Dateinamen.")
+        if changed:
+            existing = st.session_state.setdefault("loaded_sessions", {})
+            errors = []
+            for base in changed:
+                m = _meta_from_base(base)
+                st.session_state[f"datum_{base}"]  = m["date"]
+                st.session_state[f"ort_{base}"]    = m["ort"]
+                st.session_state[f"athlet_{base}"] = m["athlet"]
+                st.session_state[f"pos_{base}"]    = m["pos"]
+                try:
+                    entry = _load_staged_entry(base, staged[base])
+                    if entry:
+                        existing[entry.pop("key")] = entry
+                except Exception as e:
+                    errors.append(f"{base}: {e}")
+            for err in errors:
+                st.warning(f"Fehler: {err}")
+            if any("imu_bytes" in staged[b] for b in changed):
+                st.session_state["_goto_tab"] = "Sprunganalyse"
+            st.rerun()
 
     # ── Übersicht geladener Daten ──────────────────────────────────────────
     sessions = st.session_state.get("loaded_sessions", {})

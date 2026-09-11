@@ -156,6 +156,8 @@ else:
     # ── Sprunganalyse ──────────────────────────────────────────────────
     # Nur der gewählte Bereich wird gerechnet (st.tabs würde bei jedem Klick alle Tabs neu rendern)
     TABS = ["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"]
+    if "_goto_tab" in st.session_state:
+        st.session_state["active_tab"] = st.session_state.pop("_goto_tab")
     tab = st.radio("Bereich", TABS, horizontal=True, key="active_tab",
                    label_visibility="collapsed")
 
