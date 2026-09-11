@@ -777,6 +777,8 @@ def show():
 
     if not results:
         return
+    # Sensoren ohne Ergebnis (z.B. leere Datei) nicht weiter verarbeiten
+    sel_keys = [k for k in sel_keys if k in results]
 
     # ── Protokoll-Landungsarten automatisch für alle Runs befüllen ────────
     protocol_df = st.session_state.get("protocol_df")
