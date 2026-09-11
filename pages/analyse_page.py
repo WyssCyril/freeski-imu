@@ -571,7 +571,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         st.session_state["jump_results"] = {}
     st.session_state["jump_results"][f"{key}_{sess_id}_{run_id}"] = {
         "jumps": jumps_df, "meta": meta,
-        "run": f"S{sess_id}-{run_id}",
+        "run": f"{sess_id}-{run_id}",
         "run_note": st.session_state.get(run_note_key, ""),  # run_note_key = f"rn_{key}_{sess_id}_{run_id}"
     }
 
@@ -817,7 +817,7 @@ def show():
                 st.session_state["jump_results"][jr_key] = {
                     "jumps":    run_data["jumps"],
                     "meta":     meta,
-                    "run":      f"S{sess_id}-{run_id}",
+                    "run":      f"{sess_id}-{run_id}",
                     "run_note": st.session_state.get(run_note_key, ""),
                 }
 
