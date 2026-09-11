@@ -106,12 +106,14 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
         except Exception:
             date_fmt = m.date if m else ""
         run_note = entry.get("run_note", "")
+        run_lbl  = entry.get("run", "")
         for _, jrow in jumps.iterrows():
             rows.append({
                 "Athlet": m.athlete_code if m else run_key,
                 "Datum": date_fmt,
                 "Ort": m.location if m else "",
                 "Position": m.position_label if m else "",
+                "Run": run_lbl or jrow.get("Run", ""),
                 "Sprung": jrow.get("jump_id", ""),
                 "Tricks / Notiz": run_note,
                 "Flugzeit (s)": round(float(jrow.get("flight_time_s", 0)), 3),
@@ -253,7 +255,7 @@ def show():
     group_by = st.radio("Gruppieren nach", ["Athlet", "Ort", "Position", "Datum"], horizontal=True)
     group_col = {"Athlet": "Athlet", "Ort": "Ort", "Position": "Position", "Datum": "Datum"}[group_by]
 
-    all_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung", "Tricks / Notiz",
+    all_cols = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
                 "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
                 "Impuls (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
     display_cols = [c for c in all_cols if c in df_filtered.columns]
@@ -302,7 +304,7 @@ def show():
         Geclippt_16g=("16g geclippt", "sum"),
     )
 
-    jump_cols = ["Athlet", "Datum", "Ort", "Position", "Sprung",
+    jump_cols = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung",
                  "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
                  "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
                  "16g geclippt", "Landungsart", "Kommentar"]

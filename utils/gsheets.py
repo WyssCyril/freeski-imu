@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 
 WORKSHEET = "Sprünge"
-KEY_COLS = ["Athlet", "Datum", "Ort", "Position", "Sprung"]
+KEY_COLS = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung"]
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
