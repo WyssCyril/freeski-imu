@@ -89,6 +89,22 @@ st.markdown("""
 .stTabs [data-baseweb="tab-highlight"] { display: none !important; }
 .stTabs [data-baseweb="tab-border"]    { display: none !important; }
 
+/* Bereichswahl (Radio als Tab-Leiste) */
+div[data-testid="stRadio"] > div[role="radiogroup"] { gap: 8px; flex-wrap: wrap; }
+div[data-testid="stRadio"] label[data-baseweb="radio"] {
+    padding: 10px 22px; border-radius: 10px; background: white;
+    border: 1.5px solid rgba(227,0,27,0.2); color: #666; font-size: 15px; font-weight: 500;
+    cursor: pointer;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
+    background: #fff0f0; border-color: rgba(227,0,27,0.5); color: #E3001B;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
+    background: #E3001B; border-color: #E3001B; color: white; font-weight: 700;
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child { display: none; }
+div[data-testid="stRadio"] label[data-baseweb="radio"] p { color: inherit !important; }
+
 /* Primär-Buttons rot */
 .stButton > button[kind="primary"] {
     background: #E3001B !important;
@@ -138,28 +154,31 @@ if bereich == "validierung":
 
 else:
     # ── Sprunganalyse ──────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"])
+    # Nur der gewählte Bereich wird gerechnet (st.tabs würde bei jedem Klick alle Tabs neu rendern)
+    TABS = ["Daten laden", "Sprunganalyse", "Ergebnisse", "GPS & Sprünge", "GPS-Rohdaten"]
+    tab = st.radio("Bereich", TABS, horizontal=True, key="active_tab",
+                   label_visibility="collapsed")
 
-    with tab1:
+    if tab == "Daten laden":
         from pages import import_page
         _safe_show(import_page.show)
 
-    with tab2:
+    elif tab == "Sprunganalyse":
         from pages import analyse_page
         _safe_show(analyse_page.show)
         st.divider()
         from pages import stats_page
         _safe_show(stats_page.show)
 
-    with tab3:
+    elif tab == "Ergebnisse":
         from pages import results_page
         _safe_show(results_page.show)
 
-    with tab4:
+    elif tab == "GPS & Sprünge":
         from pages import map_page
         _safe_show(map_page.show)
 
-    with tab5:
+    elif tab == "GPS-Rohdaten":
         from pages import gnss_page
         _safe_show(gnss_page.show)
 
