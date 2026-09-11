@@ -137,6 +137,24 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
     return result
 
 
+def _decimate(t: np.ndarray, y: np.ndarray, max_pts: int = 20000):
+    """Min/Max-Ausdünnung für Plots: Peaks bleiben erhalten, Browser bekommt weniger Punkte."""
+    n = len(y)
+    if n <= max_pts:
+        return t, y
+    n_bins = max_pts // 2
+    edges = np.linspace(0, n, n_bins + 1).astype(int)
+    idx = []
+    for a, b in zip(edges[:-1], edges[1:]):
+        if b <= a:
+            continue
+        seg = y[a:b]
+        lo, hi = a + int(np.nanargmin(seg)), a + int(np.nanargmax(seg))
+        idx.extend((lo, hi) if lo < hi else (hi, lo))
+    idx = np.array(idx)
+    return t[idx], y[idx]
+
+
 def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
               axis_vert: str, title: str = "") -> go.Figure:
     t_col = "imuTimestamp [us]"
@@ -152,11 +170,13 @@ def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.65, 0.35],
                         subplot_titles=["accRes [g]", f"Vertikale Achse ({axis_vert})"],
                         vertical_spacing=0.08)
-    fig.add_trace(go.Scatter(x=t, y=acc_res, line=dict(color="#1f77b4", width=0.8),
+    t_res, y_res = _decimate(np.asarray(t), np.asarray(acc_res, dtype=float))
+    fig.add_trace(go.Scatter(x=t_res, y=y_res, line=dict(color="#1f77b4", width=0.8),
                              name="accRes [g]"), row=1, col=1)
     fig.add_hline(y=16, line_dash="dot", line_color="red",
                   annotation_text="16g Limit", row=1, col=1)
-    fig.add_trace(go.Scatter(x=t, y=acc_vert, line=dict(color="#2ca02c", width=0.8),
+    t_v, y_v = _decimate(np.asarray(t), np.asarray(acc_vert, dtype=float))
+    fig.add_trace(go.Scatter(x=t_v, y=y_v, line=dict(color="#2ca02c", width=0.8),
                              name=axis_vert), row=2, col=1)
 
     if jumps_df is not None and not jumps_df.empty:
@@ -617,6 +637,39 @@ def _plot_overlay(sensor_traces: list[dict]) -> go.Figure:
     return fig
 
 
+def _free_memory_block(sessions_loaded: dict) -> None:
+    """Schritt nach der Analyse: Rohdaten entladen, Resultate behalten."""
+    st.divider()
+    st.subheader("Nächster Athlet")
+    raw_keys = [k for k, v in sessions_loaded.items()
+                if v.get("imu") is not None or v.get("imu_path")]
+    jump_results = st.session_state.get("jump_results", {})
+    n_jumps = sum(
+        len(v["jumps"]) for v in jump_results.values()
+        if v.get("jumps") is not None and not v["jumps"].empty
+    )
+    st.caption(
+        "Wenn die Sprünge oben passen: zuerst im Tab 'Ergebnisse' auf "
+        "'In Google Sheet speichern', dann hier die Rohdaten aus dem Speicher löschen "
+        "und den nächsten Athleten hochladen."
+    )
+    col_i, col_b = st.columns(2)
+    col_i.metric("Sensoren geladen", len(raw_keys))
+    col_b.metric("Sprünge erkannt", n_jumps)
+
+    if st.button("Rohdaten löschen (Resultate behalten)", type="primary",
+                 key="btn_free_memory"):
+        for k in list(sessions_loaded.keys()):
+            sessions_loaded[k].pop("imu", None)
+            sessions_loaded[k].pop("gnss", None)
+            sessions_loaded[k].pop("imu_path", None)
+        for k in list(st.session_state.keys()):
+            if k.startswith("pipeline_v"):
+                del st.session_state[k]
+        st.success("Rohdaten gelöscht. Sprungresultate sind im Tab 'Ergebnisse' verfügbar.")
+        st.rerun()
+
+
 def show():
     st.header("Sprunganalyse")
 
@@ -624,40 +677,6 @@ def show():
     if not sessions_loaded:
         st.warning("Zuerst Daten laden (Tab 'Daten laden').")
         return
-
-    # ── Speicher freigeben ────────────────────────────────────────────────
-    with st.expander("Speicher freigeben", expanded=False):
-        st.caption(
-            "Nach der Analyse: IMU-Rohdaten aus dem Speicher löschen. "
-            "Sprungresultate bleiben erhalten und können im Tab 'Ergebnisse' exportiert werden. "
-            "Danach kannst du den nächsten Athleten hochladen."
-        )
-        # Schätze Speicherverbrauch der Rohdaten
-        raw_keys = [k for k, v in sessions_loaded.items()
-                    if v.get("imu") is not None or v.get("imu_path")]
-        n_pipeline = sum(1 for k in st.session_state if k.startswith("pipeline_v"))
-        jump_results = st.session_state.get("jump_results", {})
-        n_jumps = sum(
-            len(v["jumps"]) for v in jump_results.values()
-            if v.get("jumps") is not None and not v["jumps"].empty
-        )
-        col_i, col_b = st.columns(2)
-        col_i.metric("Sensoren geladen", len(raw_keys))
-        col_b.metric("Sprünge gespeichert", n_jumps)
-
-        if st.button("Rohdaten löschen (Resultate behalten)", type="primary",
-                     key="btn_free_memory"):
-            # IMU-DataFrames aus loaded_sessions entfernen
-            for k in list(sessions_loaded.keys()):
-                sessions_loaded[k].pop("imu", None)
-                sessions_loaded[k].pop("gnss", None)
-                sessions_loaded[k].pop("imu_path", None)
-            # Pipeline-Caches löschen (enthalten df_imu/df_session)
-            for k in list(st.session_state.keys()):
-                if k.startswith("pipeline_v"):
-                    del st.session_state[k]
-            st.success("Rohdaten gelöscht. Sprungresultate sind im Tab 'Ergebnisse' verfügbar.")
-            st.rerun()
 
     # ── Athleten-Auswahl ─────────────────────────────────────────────────
     # Alle verfügbaren Athleten ermitteln
@@ -942,8 +961,9 @@ def show():
                     vertical_spacing=0.06,
                 )
 
+                t_ov, y_ov = _decimate(t_imu, session_df[acc_res_col].values.astype(float))
                 fig_ov.add_trace(go.Scatter(
-                    x=t_imu, y=session_df[acc_res_col].values,
+                    x=t_ov, y=y_ov,
                     line=dict(color="#555", width=0.7), name="accRes [g]", showlegend=False,
                 ), row=1, col=1)
                 fig_ov.add_hline(y=16, line_dash="dot", line_color="red",
@@ -951,13 +971,15 @@ def show():
 
                 if has_gnss:
                     t_gnss = (gnss_sess[gnss_t_col].values - t0) / 1e6
+                    t_sp, y_sp = _decimate(t_gnss, gnss_sess["speedRes [m/s]"].values.astype(float), 10000)
                     fig_ov.add_trace(go.Scatter(
-                        x=t_gnss, y=gnss_sess["speedRes [m/s]"].values,
+                        x=t_sp, y=y_sp,
                         line=dict(color="#1f77b4", width=1.0), name="Speed", showlegend=False,
                     ), row=2, col=1)
                     if "altitude [m]" in gnss_sess.columns:
+                        t_al, y_al = _decimate(t_gnss, gnss_sess["altitude [m]"].values.astype(float), 10000)
                         fig_ov.add_trace(go.Scatter(
-                            x=t_gnss, y=gnss_sess["altitude [m]"].values,
+                            x=t_al, y=y_al,
                             line=dict(color="#2ca02c", width=1.0), name="Höhe", showlegend=False,
                             fill="tozeroy", fillcolor="rgba(44,160,44,0.08)",
                         ), row=3, col=1)
@@ -1052,3 +1074,5 @@ def show():
 
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):
                 _render_run(cache_key, sel_session, run_id, result, key, meta, axis_vert)
+
+    _free_memory_block(sessions_loaded)

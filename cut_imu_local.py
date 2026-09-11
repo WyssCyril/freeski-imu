@@ -2,7 +2,7 @@
 Lokales Preprocessing: IMU auf GNSS-erkannte Run-Segmente zuschneiden.
 Originaldateien werden NIE verändert. Cut-Dateien in neuem Ordner gespeichert.
 """
-import sys, os
+import sys, os, shutil
 sys.path.insert(0, os.path.dirname(__file__))
 
 import pandas as pd
@@ -14,7 +14,7 @@ import sensor_lib
 
 # ── Konfiguration ─────────────────────────────────────────────────────────────
 INPUT_FOLDER  = DATA_FOLDER          # Originaldateien
-OUTPUT_FOLDER = os.path.join(os.path.dirname(DATA_FOLDER), "Cut_Files")
+OUTPUT_FOLDER = os.path.join(os.path.dirname(DATA_FOLDER), "Cut Datafiles")  # Unterordner: <Ort>/<Datum>
 BUFFER_S      = 60.0                 # Sekunden Puffer vor/nach jedem Run
 
 # GNSS Run-Erkennungsparameter (identisch zur App)
@@ -97,10 +97,14 @@ for p in pairs:
     # Speichern
     base_name  = Path(imu_path).stem.replace("_imuData", "").replace("_imu", "").replace("_IMU", "")
     out_name   = f"{base_name}_imuData_cut.csv"
-    out_path   = os.path.join(OUTPUT_FOLDER, out_name)
+    session_dir = os.path.join(OUTPUT_FOLDER, meta.location, meta.date)
+    Path(session_dir).mkdir(parents=True, exist_ok=True)
+    out_path   = os.path.join(session_dir, out_name)
     imu_cut.to_csv(out_path, index=False)
     size_mb    = os.path.getsize(out_path) / 1_000_000
-    print(f"    → {out_name}  ({size_mb:.1f} MB)\n")
+    if gnss_path:
+        shutil.copy2(gnss_path, os.path.join(session_dir, Path(gnss_path).name))
+    print(f"    → {Path(session_dir).name}/{out_name}  ({size_mb:.1f} MB)\n")
     total_saved += 1
 
 print(f"{'='*60}")
