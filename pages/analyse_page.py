@@ -137,6 +137,18 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
     return result
 
 
+def _proto_tricks(proto_run: dict | None) -> str:
+    """Tricks aus Protokoll-Zeile als 'J1: … | J2: …' (leer wenn kein Match)."""
+    if proto_run is None:
+        return ""
+    return " | ".join(
+        f"J{i}: {proto_run[f'Jump {i}']}"
+        for i in [1, 2, 3]
+        if str(proto_run.get(f"Jump {i}", "")).strip()
+        not in ["", "/", "kein Sprung", "nan", "NaN"]
+    )
+
+
 def _decimate(t: np.ndarray, y: np.ndarray, max_pts: int = 20000):
     """Min/Max-Ausdünnung für Plots: Peaks bleiben erhalten, Browser bekommt weniger Punkte."""
     n = len(y)
@@ -465,16 +477,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     run_note_key = f"rn_{key}_{sess_id}_{run_id}"
     # Protokoll-Tricks als Default wenn noch leer
     if run_note_key not in st.session_state:
-        if proto_run is not None:
-            tricks = " | ".join([
-                f"J{i}: {proto_run[f'Jump {i}']}"
-                for i in [1, 2, 3]
-                if str(proto_run.get(f"Jump {i}", "")).strip()
-                not in ["", "/", "kein Sprung", "nan", "NaN"]
-            ])
-            st.session_state[run_note_key] = tricks
-        else:
-            st.session_state[run_note_key] = ""
+        st.session_state[run_note_key] = _proto_tricks(proto_run)
 
     # Protokoll-Info anzeigen wenn Match gefunden
     if proto_run is not None:
@@ -813,6 +816,8 @@ def show():
                             ] = proto_land
                 # jump_results direkt befüllen (ohne Expander öffnen)
                 run_note_key = f"rn_{key}_{sess_id}_{run_id}"
+                if not st.session_state.get(run_note_key):
+                    st.session_state[run_note_key] = _proto_tricks(proto_run)
                 jr_key = f"{key}_{sess_id}_{run_id}"
                 if "jump_results" not in st.session_state:
                     st.session_state["jump_results"] = {}
