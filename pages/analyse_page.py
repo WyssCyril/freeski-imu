@@ -1060,7 +1060,13 @@ def show():
                 help="IMU auf erkannte Runs zugeschnitten — diese Datei beim nächsten Mal hochladen.",
             )
 
-        st.markdown(f"{len(run_ids)} Run(s) in Session {sel_session}:")
+        n_total = sum(
+            len(r["jumps"]) for r in sessions_dict[sel_session]["runs"].values()
+            if r.get("jumps") is not None and not r["jumps"].empty
+        )
+        c_tot1, c_tot2 = st.columns(2)
+        c_tot1.metric("Sprünge erkannt (total)", n_total)
+        c_tot2.metric("Runs", len(run_ids))
 
         for run_id in run_ids:
             run_data   = sessions_dict[sel_session]["runs"][run_id]

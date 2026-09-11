@@ -213,7 +213,10 @@ def show():
         st.info("Noch keine Sprünge ausgewertet.")
         return
 
-    st.caption(f"{len(df)} Sprünge aus {df['Athlet'].nunique()} Athleten, {df['Ort'].nunique()} Orten")
+    c_a, c_b, c_c = st.columns(3)
+    c_a.metric("Sprünge total", len(df))
+    c_b.metric("Athleten", df["Athlet"].nunique())
+    c_c.metric("Orte", df["Ort"].nunique())
 
     if gsheets.enabled():
         if st.button("In Google Sheet speichern", type="primary", key="gs_save"):
