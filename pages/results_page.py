@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from utils import gsheets
 
 # Spaltenmapping Excel → interne Spalten (für Statistik-Seite)
 _EXCEL_TO_INTERNAL = {
@@ -34,16 +35,20 @@ class _SimpleMeta:
 
 
 def _import_excel(file) -> int:
-    """
-    Liest Batch-Excel (Sheet 'Einzelsprünge') und fügt Ergebnisse in
-    st.session_state['jump_results'] ein. Gibt Anzahl importierter Sprünge zurück.
-    """
+    """Liest Batch-Excel (Sheet 'Einzelsprünge') und importiert die Sprünge."""
     try:
         df = pd.read_excel(file, sheet_name="Einzelsprünge")
     except Exception as e:
         st.error(f"Fehler beim Lesen: {e}")
         return 0
+    return _import_df(df)
 
+
+def _import_df(df: pd.DataFrame) -> int:
+    """
+    Fügt Sprünge (Excel-Spaltennamen) in st.session_state['jump_results'] ein.
+    Gibt Anzahl importierter Sprünge zurück.
+    """
     if df.empty:
         return 0
 
@@ -119,11 +124,36 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
                 "Landungsart": jrow.get("landing_type", ""),
                 "Kommentar": jrow.get("comment", ""),
             })
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    # Frische Auswertungen (später im Dict) gewinnen gegenüber aus dem Sheet geladenen
+    return df.drop_duplicates(gsheets.KEY_COLS, keep="last").reset_index(drop=True)
+
+
+def _sheet_sync():
+    """Statuszeile + einmaliges Laden aus dem Google Sheet beim Start."""
+    if not gsheets.enabled():
+        return
+    if not st.session_state.get("_gs_loaded"):
+        try:
+            with st.spinner("Lade gespeicherte Auswertungen…"):
+                df = gsheets.load()
+            n = _import_df(df) if not df.empty else 0
+            st.session_state["_gs_loaded"] = True
+            st.session_state["_gs_n"] = n
+        except Exception as e:
+            st.session_state["_gs_loaded"] = True
+            st.session_state["_gs_n"] = -1
+            st.warning(f"Google Sheet nicht erreichbar: {e}")
+    n = st.session_state.get("_gs_n", 0)
+    txt = f"{n} Sprünge aus der Datenablage geladen" if n >= 0 else "Datenablage nicht erreichbar"
+    st.caption(f"Datenablage: [Google Sheet]({gsheets.sheet_url()}) · {txt}")
 
 
 def show():
     st.header("Ergebnisse")
+    _sheet_sync()
 
     # ── Batch-Import ──────────────────────────────────────────────────────
     with st.expander("Frühere Batches importieren", expanded=False):
@@ -182,6 +212,15 @@ def show():
         return
 
     st.caption(f"{len(df)} Sprünge aus {df['Athlet'].nunique()} Athleten, {df['Ort'].nunique()} Orten")
+
+    if gsheets.enabled():
+        if st.button("In Google Sheet speichern", type="primary", key="gs_save"):
+            try:
+                with st.spinner("Speichere…"):
+                    n_new, n_upd = gsheets.save(df)
+                st.success(f"Gespeichert: {n_new} neue, {n_upd} aktualisierte Sprünge.")
+            except Exception as e:
+                st.error(f"Speichern fehlgeschlagen: {e}")
 
     # ── Filter ────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)

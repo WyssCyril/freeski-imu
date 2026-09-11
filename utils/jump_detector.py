@@ -122,10 +122,11 @@ def compute_rotation(df_raw: pd.DataFrame, takeoff_idx: int, landing_idx: int) -
 
 # Bias-Korrektur aus Validierungsmessungen (Magglingen 2026-01-28, Cyril + Nils)
 # Formel: KMP_korrigiert = slope * IMU_peak_g + intercept
-# Bauch: Mittel aus Sensor b1 (r=0.692) und b2 (r=0.592), beide p<0.001
+# Bauch: Regression KMP~IMU, Sensor b1, Cyril n=60 (r=0.61, p<0.001);
+# kein proportionaler Bias (r=0.094, p=0.476) → lineare Korrektur zulässig.
 # Fuss Re/Li: keine signifikante Korrelation (p>0.05) → keine Korrektur
 _BIAS_CORRECTION = {
-    "Bauch":       {"slope": 0.386, "intercept": 4.426},  # Mittel b1+b2
+    "Bauch":       {"slope": 0.4323, "intercept": 3.9842},
 }
 
 

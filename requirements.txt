@@ -6,3 +6,5 @@ matplotlib
 scipy
 openpyxl
 kaleido
+gspread
+google-auth
