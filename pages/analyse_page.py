@@ -19,6 +19,7 @@ from utils.jump_detector import (
 )
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../utils"))
 import sensor_lib
+from pages.results_page import FLIGHT_MIN_S, PEAK_MIN_G
 
 
 def _get_raw_df(sess: dict) -> pd.DataFrame | None:
@@ -305,7 +306,9 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         la_t   = float(t_all[min(int(row["landing_idx"]),  len(t_all)-1)])
 
         color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
-        title_txt = f"{jid}  {peak:.1f}g  {flight:.2f}s{'  (!)' if clipped else ''}"
+        suspicious = flight < FLIGHT_MIN_S or peak < PEAK_MIN_G
+        title_txt = (f"{'⚠ ' if suspicious else ''}{jid}  {peak:.1f}g  {flight:.2f}s"
+                     f"{'  (!)' if clipped else ''}")
         lt_label  = lt if lt else "—"
 
         fig = go.Figure()
@@ -1084,8 +1087,15 @@ def show():
             alt        = run_meta.get("alt_drop_m", "—")
             start_time = _format_run_time(run_meta)
             time_str   = f"  {start_time}" if start_time else ""
-            exp_label  = (f"Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
-                          + (f"| {dur} s  | Δ{alt} m" if run_meta else ""))
+            n_susp = 0
+            if n_jumps:
+                n_susp = int(((raw_jumps["flight_time_s"] < FLIGHT_MIN_S) |
+                              (raw_jumps["peak_res_g"] < PEAK_MIN_G)).sum())
+            warn = "⚠ " if (n_jumps > 3 or n_susp) else ""
+            exp_label  = (f"{warn}Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
+                          + (f"| {dur} s  | Δ{alt} m" if run_meta else "")
+                          + (f"  | {n_susp} unsicher" if n_susp else "")
+                          + ("  | >3 Sprünge" if n_jumps > 3 else ""))
 
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):
                 _render_run(cache_key, sel_session, run_id, result, key, meta, axis_vert)

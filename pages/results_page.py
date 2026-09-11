@@ -2,6 +2,7 @@
 Ergebnisse: Gespeicherte Sprungauswertungen pro Athlet/Sensor, Excel-Export + Import.
 """
 import io
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -22,6 +23,22 @@ _EXCEL_TO_INTERNAL = {
     "Sprung":        "jump_id",
     "Kommentar":     "comment",
 }
+
+
+FLIGHT_MIN_S = 1.5   # Kicker-Sprünge hier typ. 1.8–2.2 s; kürzer → Rail/Roller?
+PEAK_MIN_G   = 7.0   # Kicker-Landungen typ. 8–14 g
+
+
+def jump_hint(peak_g: float, flight_s: float, j_num: int, run_matched: bool) -> str:
+    """Automatischer Prüfhinweis pro Sprung (leer = unauffällig)."""
+    hints = []
+    if j_num > 3:
+        hints.append(f"{j_num}. Sprung im Run (Protokoll hat 3)")
+    if flight_s < FLIGHT_MIN_S or peak_g < PEAK_MIN_G:
+        hints.append("kurz/klein → Rail oder Roller?")
+    if not run_matched:
+        hints.append("kein Protokoll-Match")
+    return "; ".join(hints)
 
 
 class _SimpleMeta:
@@ -107,8 +124,19 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
             date_fmt = m.date if m else ""
         run_note = entry.get("run_note", "")
         run_lbl  = entry.get("run", "")
-        for _, jrow in jumps.iterrows():
+        run_matched = bool(str(run_note).strip()) or (
+            "landing_type" in jumps.columns
+            and jumps["landing_type"].astype(str).str.strip().ne("").any()
+        )
+        for pos, (_, jrow) in enumerate(jumps.iterrows(), 1):
+            jid_m = re.search(r"(\d+)$", str(jrow.get("jump_id", "")))
+            j_num = int(jid_m.group(1)) if jid_m else pos
+            peak_v   = float(jrow.get("peak_res_g", 0))
+            flight_v = float(jrow.get("flight_time_s", 0))
+            hint = jrow.get("Hinweis") if str(jrow.get("Hinweis", "")).strip() else \
+                jump_hint(peak_v, flight_v, j_num, run_matched)
             rows.append({
+                "Hinweis": hint,
                 "Athlet": gsheets.norm_athlet(m.athlete_code) if m else run_key,
                 "Datum": date_fmt,
                 "Ort": m.location if m else "",
@@ -243,6 +271,11 @@ def show():
     )
     df_filtered = df[mask].reset_index(drop=True)
 
+    n_hint = int((df_filtered["Hinweis"].astype(str).str.strip() != "").sum())
+    only_hint = st.checkbox(f"Nur auffällige Sprünge anzeigen ({n_hint})", key="only_hint")
+    if only_hint:
+        df_filtered = df_filtered[df_filtered["Hinweis"].astype(str).str.strip() != ""].reset_index(drop=True)
+
     st.markdown(f"**{len(df_filtered)} Sprünge gefiltert**")
 
     # ── Kennzahlen Übersicht ──────────────────────────────────────────────
@@ -258,7 +291,7 @@ def show():
     group_by = st.radio("Gruppieren nach", ["Athlet", "Ort", "Position", "Datum"], horizontal=True)
     group_col = {"Athlet": "Athlet", "Ort": "Ort", "Position": "Position", "Datum": "Datum"}[group_by]
 
-    all_cols = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
+    all_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
                 "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
                 "Impuls (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
     display_cols = [c for c in all_cols if c in df_filtered.columns]
@@ -307,7 +340,7 @@ def show():
         Geclippt_16g=("16g geclippt", "sum"),
     )
 
-    jump_cols = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung",
+    jump_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung",
                  "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
                  "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
                  "16g geclippt", "Landungsart", "Kommentar"]
