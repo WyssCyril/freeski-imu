@@ -109,7 +109,7 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
         run_lbl  = entry.get("run", "")
         for _, jrow in jumps.iterrows():
             rows.append({
-                "Athlet": m.athlete_code if m else run_key,
+                "Athlet": gsheets.norm_athlet(m.athlete_code) if m else run_key,
                 "Datum": date_fmt,
                 "Ort": m.location if m else "",
                 "Position": m.position_label if m else "",

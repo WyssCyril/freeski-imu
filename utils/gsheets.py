@@ -14,6 +14,18 @@ _SCOPES = [
 ]
 
 
+def norm_athlet(v) -> str:
+    """'2', '2.0', 2, '02' → '02'; nicht-numerische Codes bleiben unverändert."""
+    s = str(v).strip()
+    try:
+        f = float(s)
+        if f.is_integer():
+            return f"{int(f):02d}"
+    except ValueError:
+        pass
+    return s
+
+
 def enabled() -> bool:
     try:
         return "gcp_service_account" in st.secrets and "sheet_id" in st.secrets
@@ -40,7 +52,10 @@ def load() -> pd.DataFrame:
     """Alle gespeicherten Sprünge als DataFrame (leer, wenn das Sheet leer ist)."""
     df = pd.DataFrame(_worksheet().get_all_records())
     # RAW-Schreiben legt Booleans als Text "TRUE"/"FALSE" ab
-    return df.replace({"TRUE": True, "FALSE": False})
+    df = df.replace({"TRUE": True, "FALSE": False})
+    if "Athlet" in df.columns:
+        df["Athlet"] = df["Athlet"].map(norm_athlet)
+    return df
 
 
 def save(df: pd.DataFrame) -> tuple[int, int]:
@@ -50,6 +65,7 @@ def save(df: pd.DataFrame) -> tuple[int, int]:
     """
     df = df.copy()
     df["Gespeichert am"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+    df["Athlet"] = df["Athlet"].map(norm_athlet)
     for c in KEY_COLS:
         df[c] = df[c].astype(str)
 
