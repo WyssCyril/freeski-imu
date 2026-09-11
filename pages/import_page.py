@@ -192,7 +192,8 @@ def show():
     # ── Upload: Dateien wählen → sofort laden ─────────────────────────────
     st.subheader("Dateien hochladen")
     st.caption("IMU-Cut + GNSS eines Athleten wählen — Datum, Ort, Athlet und Position werden "
-               "aus dem Dateinamen gelesen, die Sprunganalyse startet direkt.")
+               "aus dem Dateinamen gelesen, die Sprunganalyse startet direkt. "
+               "Der vorherige Athlet wird dabei aus dem Speicher entfernt (Resultate bleiben im Google Sheet).")
 
     uploaded = st.file_uploader(
         "CSV", type=["csv"], accept_multiple_files=True,
@@ -219,6 +220,15 @@ def show():
 
         if changed:
             existing = st.session_state.setdefault("loaded_sessions", {})
+            # Neuer Athlet (IMU dabei) → vorherige Athleten aus dem Speicher entfernen
+            if any("imu_bytes" in staged[b] for b in changed):
+                existing.clear()
+                for k in list(st.session_state.keys()):
+                    if k.startswith("pipeline_v"):
+                        del st.session_state[k]
+                for b in list(staged.keys()):
+                    if b not in changed:
+                        del staged[b]
             errors = []
             for base in changed:
                 m = _meta_from_base(base)

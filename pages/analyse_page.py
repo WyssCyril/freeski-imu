@@ -656,9 +656,10 @@ def _free_memory_block(sessions_loaded: dict) -> None:
         if v.get("jumps") is not None and not v["jumps"].empty
     )
     st.caption(
-        "Wenn die Sprünge oben passen: zuerst im Tab 'Ergebnisse' auf "
-        "'In Google Sheet speichern', dann hier die Rohdaten aus dem Speicher löschen "
-        "und den nächsten Athleten hochladen."
+        "Wenn die Sprünge oben passen: im Tab 'Ergebnisse' auf 'In Google Sheet speichern', "
+        "dann im Tab 'Daten laden' den nächsten Athleten hochladen – der aktuelle wird dabei "
+        "automatisch aus dem Speicher entfernt. Der Button unten ist nur nötig, wenn die App "
+        "wegen Speichermangel langsam wird."
     )
     col_i, col_b = st.columns(2)
     col_i.metric("Sensoren geladen", len(raw_keys))
