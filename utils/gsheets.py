@@ -58,16 +58,30 @@ def load() -> pd.DataFrame:
     return df
 
 
+GROUP_COLS = ["Athlet", "Datum", "Ort", "Position"]
+
+
+def _content_key(df: pd.DataFrame) -> pd.Series:
+    """Inhaltlicher Schlüssel: gleicher Run + gleicher Peak + gleiche Flugzeit = gleicher Sprung."""
+    return (df["Athlet"].astype(str) + "|" + df["Datum"].astype(str) + "|" + df["Ort"].astype(str)
+            + "|" + df["Position"].astype(str) + "|" + df["Run"].astype(str)
+            + "|" + pd.to_numeric(df["Peak (g)"], errors="coerce").round(2).astype(str)
+            + "|" + pd.to_numeric(df["Flugzeit (s)"], errors="coerce").round(3).astype(str))
+
+
 def save(df: pd.DataFrame) -> tuple[int, int]:
     """
-    Upsert: bestehende Zeilen mit gleichem Schlüssel (Athlet/Datum/Ort/Position/Sprung)
-    werden ersetzt, neue angehängt. Gibt (neu, aktualisiert) zurück.
+    Speichern ohne Doppelte: Für jeden enthaltenen Athleten (Athlet/Datum/Ort/Position)
+    werden ALLE bisherigen Zeilen im Sheet durch die aktuellen ersetzt.
+    Gibt (neu, ersetzt) zurück.
     """
     df = df.copy()
     df["Gespeichert am"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
     df["Athlet"] = df["Athlet"].map(norm_athlet)
     for c in KEY_COLS:
         df[c] = df[c].astype(str)
+    df = df.drop_duplicates(KEY_COLS, keep="last")
+    df = df[~_content_key(df).duplicated(keep="last")]
 
     existing = load()
     if existing.empty:
@@ -75,12 +89,13 @@ def save(df: pd.DataFrame) -> tuple[int, int]:
     else:
         for c in KEY_COLS:
             existing[c] = existing[c].astype(str)
-        new_keys = set(map(tuple, df[KEY_COLS].values))
-        old_keys = set(map(tuple, existing[KEY_COLS].values))
-        n_upd = len(new_keys & old_keys)
-        n_new = len(new_keys - old_keys)
-        merged = pd.concat([existing, df], ignore_index=True)
+        groups = set(map(tuple, df[GROUP_COLS].drop_duplicates().values))
+        in_groups = existing[GROUP_COLS].apply(tuple, axis=1).isin(groups)
+        n_upd = int(in_groups.sum())
+        n_new = max(len(df) - n_upd, 0)
+        merged = pd.concat([existing[~in_groups], df], ignore_index=True)
         merged = merged.drop_duplicates(KEY_COLS, keep="last")
+        merged = merged[~_content_key(merged).duplicated(keep="last")]
 
     cols = list(df.columns) + [c for c in merged.columns if c not in df.columns]
     merged = merged.reindex(columns=cols).fillna("")

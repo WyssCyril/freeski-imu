@@ -113,10 +113,21 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
     """Sammelt alle gespeicherten Sprungresultate aus dem Session-State."""
     jump_results = st.session_state.get("jump_results", {})
     rows = []
+
+    def _group(m):
+        return (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, m.position_label)
+
+    # Frisch analysierte Athleten (Tag+Sensor) ersetzen die aus dem Sheet geladenen Zeilen komplett
+    fresh_groups = {
+        _group(e["meta"]) for k, e in jump_results.items()
+        if not k.startswith("import_") and e.get("meta") is not None
+    }
     for run_key, entry in jump_results.items():
         jumps = entry.get("jumps")
         m = entry.get("meta")
         if jumps is None or (hasattr(jumps, "empty") and jumps.empty):
+            continue
+        if run_key.startswith("import_") and m is not None and _group(m) in fresh_groups:
             continue
         try:
             date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y") if m else ""
