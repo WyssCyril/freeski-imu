@@ -21,7 +21,7 @@ EXCLUDE_DIRS = {"datenfiles validierung", "nicht verwenden", "nicht verwenden!",
 
 # Athlet:innen, die aus der Auswertung ausgeschlossen sind: (Datum YYYYMMDD, Ort) → Athlet-Codes
 EXCLUDED_ATHLETES = {
-    ("20260422", "corvatsch"): {"06", "07", "09"},
+    ("20260422", "corvatsch"): {"05", "06", "07", "09"},  # 05: GNSS + IMU-Zeitstempel defekt
 }
 
 
