@@ -917,12 +917,33 @@ def show():
             continue
 
         session_ids = list(sessions_dict.keys())
+
+        # Sprünge aller Sessions für Ergebnisse/Speichern vormerken, nicht nur der angezeigten.
+        # Angezeigte Runs überschreiben diese Einträge später in _render_run (mit Labels/Kommentaren).
+        jr_all = st.session_state.setdefault("jump_results", {})
+        for s_id, s_data in sessions_dict.items():
+            for r_id, r_data in s_data["runs"].items():
+                j = r_data.get("jumps")
+                if j is None or j.empty:
+                    continue
+                jr_all.setdefault(f"{key}_{s_id}_{r_id}", {
+                    "jumps": j, "meta": meta, "run": f"{s_id}-{r_id}",
+                    "run_note": st.session_state.get(f"rn_{key}_{s_id}_{r_id}", ""),
+                })
+
         # Session-Auswahl nur wenn mehrere vorhanden
         if len(session_ids) > 1:
+            def _n_sess_jumps(s):
+                return sum(len(r["jumps"]) for r in sessions_dict[s]["runs"].values()
+                           if r.get("jumps") is not None)
+            n_by_sess = {s: _n_sess_jumps(s) for s in session_ids}
+            # Standard: Session mit den meisten Sprüngen (kurze Leer-Sessions am Anfang überspringen)
+            if st.session_state.get(f"sess_{key}") not in session_ids:
+                st.session_state[f"sess_{key}"] = max(session_ids, key=lambda s: n_by_sess[s])
             sel_session = st.selectbox(
                 f"Session ({len(session_ids)} erkannt)",
                 session_ids,
-                format_func=lambda s: f"Session {s}",
+                format_func=lambda s: f"Session {s} — {n_by_sess[s]} Sprünge",
                 key=f"sess_{key}",
             )
         else:
