@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from utils.admos_parser import (parse_filename, load_imu_raw, load_gnss_raw,
+from utils.admos_parser import (parse_filename, is_excluded, load_imu_raw, load_gnss_raw,
                                 find_csv_pairs, classify_sensor_file,
                                 sensor_file_base, DATA_FOLDER, SensorMeta)
 
@@ -213,6 +213,12 @@ def show():
                 done.add(f.name)
                 continue
             base = sensor_file_base(f.name)
+            _m = parse_filename(f.name)
+            if is_excluded(_m.date, _m.location, _m.athlete_code):
+                st.warning(f"Athlet {_m.athlete_code} ({_m.location} {_m.date}) ist von der Auswertung "
+                           f"ausgeschlossen: **{f.name}** wird nicht geladen.")
+                done.add(f.name)
+                continue
             f.seek(0)
             staged.setdefault(base, {})[f"{kind}_bytes"] = f.read()
             done.add(f.name)

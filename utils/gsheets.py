@@ -55,6 +55,10 @@ def load() -> pd.DataFrame:
     df = df.replace({"TRUE": True, "FALSE": False})
     if "Athlet" in df.columns:
         df["Athlet"] = df["Athlet"].map(norm_athlet)
+        if {"Datum", "Ort"} <= set(df.columns):
+            from utils.admos_parser import is_excluded
+            excl = df.apply(lambda r: is_excluded(r["Datum"], r["Ort"], r["Athlet"]), axis=1)
+            df = df[~excl].reset_index(drop=True)
     return df
 
 

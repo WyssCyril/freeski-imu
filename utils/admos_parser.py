@@ -19,6 +19,22 @@ DATA_FOLDER = "/Users/cyrilwyss/AAMasterarbeit/zz_Data Claude" if _os.path.exist
 # Ordner-Namen (lowercase) die beim On-Snow-Scan übersprungen werden
 EXCLUDE_DIRS = {"datenfiles validierung", "nicht verwenden", "nicht verwenden!", "runs", "__pycache__"}
 
+# Athlet:innen, die aus der Auswertung ausgeschlossen sind: (Datum YYYYMMDD, Ort) → Athlet-Codes
+EXCLUDED_ATHLETES = {
+    ("20260422", "corvatsch"): {"06", "07", "09"},
+}
+
+
+def is_excluded(date, location, athlete) -> bool:
+    """True, wenn Athlet an diesem Messtag ausgeschlossen ist. Datum als YYYYMMDD oder TT.MM.JJJJ."""
+    d = str(date).strip()
+    if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", d):
+        d = d[6:10] + d[3:5] + d[0:2]
+    a = re.sub(r"\.\d+$", "", str(athlete).strip())
+    if a.isdigit():
+        a = f"{int(a):02d}"
+    return a in EXCLUDED_ATHLETES.get((d, str(location).strip().lower()), set())
+
 
 @dataclass
 class SensorMeta:
@@ -38,7 +54,7 @@ def parse_filename(filepath: str) -> SensorMeta:
     Beispiel: 20260402_Laax_ID327_5A_Bauch_imuData.csv
     """
     name = Path(filepath).stem
-    name = re.sub(r"_(imuData|gnssData|imu|gnss)$", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"_(imuData|gnssData|imu|gnss)(_cut)?$", "", name, flags=re.IGNORECASE)
 
     parts = name.split("_")
     date = parts[0] if len(parts) > 0 else ""
@@ -160,6 +176,8 @@ def find_csv_pairs(folder: str) -> list[dict]:
         if entry["imu_path"] is None:
             continue  # IMU ist Pflicht
         meta = parse_filename(entry["imu_path"])
+        if is_excluded(meta.date, meta.location, meta.athlete_code):
+            continue
         pairs.append({
             "imu_path": entry["imu_path"],
             "gnss_path": entry["gnss_path"],
