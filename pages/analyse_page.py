@@ -508,19 +508,21 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
             st.warning(f"Keine Bias-Korrektur für {pos_lbl} — Korrelation mit Kraftmessplatte nicht signifikant (p>0.05)")
 
         st.markdown("**Landungsart zuweisen:**")
-        hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
-        for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "16g", "Landungsart", "Kommentar"]):
+        hdr = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
+        for h, lbl in zip(hdr, ["Sprung", "Flugzeit (s)", "Peak (g)", "TTP (s)", "RFD (g/s)", "Landeimpuls 0.25 s (g·s)", "16g", "Landungsart", "Kommentar"]):
             h.write(f"**{lbl}**")
 
         _LAND_OPTIONS = ["", "vorwärts", "switch", "crash", "kein Sprung"]
         for _, row in jumps_df.iterrows():
             jid = row["jump_id"]
-            c0, c1, c2, c3, c4, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
+            c0, c1, c2, c3, c4, c6, c5, c7, c8 = st.columns([1, 1.5, 1.5, 1.5, 1.5, 1.5, 1, 2, 3])
             c0.write(jid)
             c1.write(f"{row['flight_time_s']:.3f}")
             c2.write(f"{'(!) ' if row.get('clipped_16g') else ''}{row['peak_res_g']:.2f}")
             c3.write(f"{row.get('time_to_peak_s', '—')}")
             c4.write(f"{row.get('rfd_g_per_s', '—')}")
+            li = row.get("landing_impulse_025_g_s")
+            c6.write(f"{li:.3f}" if li is not None and pd.notna(li) else "—")
             c5.write("(!)" if row.get("clipped_16g") else "OK")
             saved_comment = st.session_state[comment_key].get(jid, "")
             new_comment = c8.text_input("", value=saved_comment, placeholder="Kommentar...",
@@ -767,7 +769,7 @@ def show():
     for key in sel_keys:
         sess = sessions_loaded[key]
         pos_lbl = sess.get("meta").position_label if sess.get("meta") else ""
-        cache_key = f"pipeline_v5_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v6_{key}_{'_'.join(str(v) for v in params.values())}"
         if cache_key not in st.session_state:
             raw_df = _get_raw_df(sess)
             if raw_df is None:
@@ -954,7 +956,7 @@ def show():
             st.warning("Keine Runs erkannt.")
             continue
 
-        cache_key = f"pipeline_v5_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v6_{key}_{'_'.join(str(v) for v in params.values())}"
 
         # ── Session-Overview mit Run-Markierungen (IMU + GNSS sync) ─────
         session_df = sessions_dict[sel_session].get("df")

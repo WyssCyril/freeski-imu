@@ -15,6 +15,7 @@ PARAMS = {
     "time_to_peak_s":  "Time to Peak (s)",
     "rfd_g_per_s":     "RFD (g/s)",
     "impulse_net_g_s": "Impuls netto (g·s)",
+    "landing_impulse_025_g_s": "Landeimpuls 0.25 s (g·s)",
 }
 
 
@@ -51,6 +52,11 @@ def show():
 
     st.subheader("Sprungauswertung")
 
+    # Aus dem Sheet geladene Zeilen können leere Zellen ("") enthalten → numerisch machen
+    for col in PARAMS:
+        if col in all_jumps.columns:
+            all_jumps[col] = pd.to_numeric(all_jumps[col], errors="coerce")
+
     # ── Alle Sprünge zusammen ──────────────────────────────────────────────
     avail_params = [p for p in PARAMS if p in all_jumps.columns]
     n_total = len(all_jumps)
@@ -59,16 +65,20 @@ def show():
     # Totals
     total_flight = all_jumps["flight_time_s"].dropna().sum() if "flight_time_s" in all_jumps.columns else 0
     total_impulse = all_jumps["impulse_net_g_s"].dropna().sum() if "impulse_net_g_s" in all_jumps.columns else None
+    total_landing_imp = (all_jumps["landing_impulse_025_g_s"].dropna().sum()
+                         if "landing_impulse_025_g_s" in all_jumps.columns else None)
     total_peak = all_jumps["peak_res_g"].dropna().sum() if "peak_res_g" in all_jumps.columns else None
 
     st.caption(f"Gesamt: **{n_total}** Sprünge | Geclippt (16g): **{n_clipped}**")
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Gesamte Flugzeit", f"{total_flight:.1f} s")
     if total_impulse is not None:
         c2.metric("Aufaddierter Impuls (Load)", f"{total_impulse:.2f} g·s")
+    if total_landing_imp is not None:
+        c3.metric("Aufaddierter Landeimpuls 0.25 s", f"{total_landing_imp:.2f} g·s")
     if total_peak is not None:
-        c3.metric("Aufaddierte Peak-g", f"{total_peak:.1f} g")
+        c4.metric("Aufaddierte Peak-g", f"{total_peak:.1f} g")
 
     # Zusammenfassungstabelle
     summary_rows = []

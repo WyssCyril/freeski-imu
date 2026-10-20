@@ -18,6 +18,7 @@ _EXCEL_TO_INTERNAL = {
     "TTP (s)":       "time_to_peak_s",
     "RFD (g/s)":     "rfd_g_per_s",
     "Impuls (g·s)":  "impulse_net_g_s",
+    "Landeimpuls 0.25 s (g·s)": "landing_impulse_025_g_s",
     "16g geclippt":  "clipped_16g",
     "Landungsart":   "landing_type",
     "Sprung":        "jump_id",
@@ -109,6 +110,12 @@ def _import_df(df: pd.DataFrame) -> int:
     return count
 
 
+def _num(v, ndigits: int) -> float:
+    """Zahl gerundet; fehlende/leere Werte (z.B. alte Sheet-Zeilen) → NaN."""
+    v = pd.to_numeric(v, errors="coerce")
+    return float("nan") if pd.isna(v) else round(float(v), ndigits)
+
+
 def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
     """Sammelt alle gespeicherten Sprungresultate aus dem Session-State."""
     jump_results = st.session_state.get("jump_results", {})
@@ -161,6 +168,7 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
                 "TTP (s)": round(float(jrow.get("time_to_peak_s", 0)), 4),
                 "RFD (g/s)": round(float(jrow.get("rfd_g_per_s", 0)), 2),
                 "Impuls (g·s)": round(float(jrow.get("impulse_g_s", 0)), 4),
+                "Landeimpuls 0.25 s (g·s)": _num(jrow.get("landing_impulse_025_g_s"), 4),
                 "16g geclippt": bool(jrow.get("clipped_16g", False)),
                 "Landungsart": jrow.get("landing_type", ""),
                 "Kommentar": jrow.get("comment", ""),
@@ -304,7 +312,7 @@ def show():
 
     all_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
                 "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
-                "Impuls (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
+                "Impuls (g·s)", "Landeimpuls 0.25 s (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
     display_cols = [c for c in all_cols if c in df_filtered.columns]
 
     for grp_val, grp_df in df_filtered.groupby(group_col, sort=True):
@@ -348,12 +356,13 @@ def show():
         TTP_mean=("TTP (s)", "mean"),
         RFD_mean=("RFD (g/s)", "mean"),
         Impuls_mean=("Impuls (g·s)", "mean"),
+        Landeimpuls_025_mean=("Landeimpuls 0.25 s (g·s)", "mean"),
         Geclippt_16g=("16g geclippt", "sum"),
     )
 
     jump_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung",
                  "Flugzeit (s)", "Peak (g)", "Peak roh (g)",
-                 "TTP (s)", "RFD (g/s)", "Impuls (g·s)",
+                 "TTP (s)", "RFD (g/s)", "Impuls (g·s)", "Landeimpuls 0.25 s (g·s)",
                  "16g geclippt", "Landungsart", "Kommentar"]
 
     def _make_excel(data: pd.DataFrame, label: str) -> bytes:

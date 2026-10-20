@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import sensor_lib
 
 SAMPLE_RATE = 200.0
+LANDING_WINDOW_N = 51   # 0.25 s bei 200 Hz (inkl. Landungspunkt)
 
 
 def detect_vertical_axis(df: pd.DataFrame) -> str:
@@ -140,7 +141,7 @@ def apply_bias_correction(peak_g: float, position_label: str) -> float:
 
 def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame,
                            position_label: str = "") -> pd.DataFrame:
-    """Fügt Time to Peak, RFD und Impuls zu jedem Sprung hinzu."""
+    """Fügt Time to Peak, RFD, Impuls und Netto-Landeimpuls 0–0.25 s zu jedem Sprung hinzu."""
     df = df_raw.copy()
     if "accRes [g]" not in df.columns:
         df = preprocess_imu(df)
@@ -159,6 +160,10 @@ def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame,
         rfd = (peak_g - acc_at_land) / delta_t if delta_t > 0 else 0.0
         impulse = float(trapz(df["accRes [g]"].iloc[landing_idx:peak_idx + 1], dx=1 / SAMPLE_RATE))
         impulse_net = float(trapz(df["accRes [g]"].iloc[landing_idx:peak_idx + 1] - 1.0, dx=1 / SAMPLE_RATE))
+        # Netto-Landeimpuls über fixes Fenster 0–0.25 s ab Landung (validiert mit Kraftmessplatte)
+        win = df["accRes [g]"].iloc[landing_idx:landing_idx + LANDING_WINDOW_N]
+        landing_impulse_025 = (float(trapz(win - 1.0, dx=1 / SAMPLE_RATE))
+                               if len(win) == LANDING_WINDOW_N else float("nan"))
         clipped = bool((df["accRes [g]"].iloc[landing_idx:peak_idx + 1] >= 15.5).any())
 
         rot = compute_rotation(df, int(row["takeoff_idx"]), landing_idx)
@@ -174,6 +179,7 @@ def compute_landing_params(df_raw: pd.DataFrame, jumps_df: pd.DataFrame,
             "rfd_g_per_s": round(rfd, 2),
             "impulse_g_s": round(impulse, 4),
             "impulse_net_g_s": round(impulse_net, 4),
+            "landing_impulse_025_g_s": round(landing_impulse_025, 4),
             "clipped_16g": clipped,
             "landing_type": row.get("landing_type", ""),
             "rotations": rot["rotations"],
