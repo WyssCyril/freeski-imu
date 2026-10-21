@@ -20,6 +20,7 @@ from utils.jump_detector import (
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../utils"))
 import sensor_lib
 from pages.results_page import FLIGHT_MIN_S, PEAK_MIN_G
+from utils.jump_detector import mark_plausible
 
 
 def _get_raw_df(sess: dict) -> pd.DataFrame | None:
@@ -116,7 +117,7 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
                     ].reset_index(drop=True)
                 else:
                     run_imu = df_session
-                jumps_df = _detect_jumps_for_segment(run_imu, axis_vert, params, position_label)
+                jumps_df = mark_plausible(_detect_jumps_for_segment(run_imu, axis_vert, params, position_label))
                 meta_dict = run_row.to_dict()
                 if gnss_offset_us is not None and "start_time_us" in meta_dict:
                     meta_dict["start_time_real_us"] = float(meta_dict["start_time_us"]) + gnss_offset_us
@@ -126,7 +127,8 @@ def _run_pipeline(raw_df: pd.DataFrame, gnss_df: pd.DataFrame | None, params: di
                     "jumps": jumps_df,
                 }
         else:
-            jumps_df = _detect_jumps_for_segment(df_session, axis_vert, params, position_label)
+            jumps_df = mark_plausible(_detect_jumps_for_segment(df_session, axis_vert, params, position_label),
+                                      max_per_run=None)
             session_result["runs"]["Alle"] = {
                 "df_imu": df_session,
                 "run_meta": {},
@@ -307,8 +309,10 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
 
         color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
         suspicious = flight < FLIGHT_MIN_S or peak < PEAK_MIN_G
-        title_txt = (f"{'⚠ ' if suspicious else ''}{jid}  {peak:.1f}g  {flight:.2f}s"
-                     f"{'  (!)' if clipped else ''}")
+        excluded = not bool(row.get("plausible", True))
+        title_txt = (f"{'✕ ' if excluded else '⚠ ' if suspicious else ''}{jid}  {peak:.1f}g  {flight:.2f}s"
+                     f"{'  (!)' if clipped else ''}"
+                     f"{'  – nicht in Auswertung' if excluded else ''}")
         lt_label  = lt if lt else "—"
 
         fig = go.Figure()
@@ -769,7 +773,7 @@ def show():
     for key in sel_keys:
         sess = sessions_loaded[key]
         pos_lbl = sess.get("meta").position_label if sess.get("meta") else ""
-        cache_key = f"pipeline_v6_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v7_{key}_{'_'.join(str(v) for v in params.values())}"
         if cache_key not in st.session_state:
             raw_df = _get_raw_df(sess)
             if raw_df is None:
@@ -956,7 +960,7 @@ def show():
             st.warning("Keine Runs erkannt.")
             continue
 
-        cache_key = f"pipeline_v6_{key}_{'_'.join(str(v) for v in params.values())}"
+        cache_key = f"pipeline_v7_{key}_{'_'.join(str(v) for v in params.values())}"
 
         # ── Session-Overview mit Run-Markierungen (IMU + GNSS sync) ─────
         session_df = sessions_dict[sel_session].get("df")
@@ -1115,10 +1119,12 @@ def show():
             if n_jumps:
                 n_susp = int(((raw_jumps["flight_time_s"] < FLIGHT_MIN_S) |
                               (raw_jumps["peak_res_g"] < PEAK_MIN_G)).sum())
+            n_excl = int((~raw_jumps["plausible"].astype(bool)).sum()) if n_jumps and "plausible" in raw_jumps.columns else 0
             warn = "⚠ " if (n_jumps > 3 or n_susp) else ""
             exp_label  = (f"{warn}Run {run_id}{time_str}  —  {n_jumps} Jump{'s' if n_jumps != 1 else ''}  "
                           + (f"| {dur} s  | Δ{alt} m" if run_meta else "")
                           + (f"  | {n_susp} unsicher" if n_susp else "")
+                          + (f"  | {n_excl} nicht in Auswertung" if n_excl else "")
                           + ("  | >3 Sprünge" if n_jumps > 3 else ""))
 
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):

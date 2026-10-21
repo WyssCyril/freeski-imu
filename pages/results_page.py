@@ -22,6 +22,8 @@ _EXCEL_TO_INTERNAL = {
     "16g geclippt":  "clipped_16g",
     "Landungsart":   "landing_type",
     "Sprung":        "jump_id",
+    "In Auswertung": "plausible",
+    "Ausschlussgrund": "exclusion_reason",
     "Kommentar":     "comment",
 }
 
@@ -110,6 +112,16 @@ def _import_df(df: pd.DataFrame) -> int:
     return count
 
 
+def _as_bool(v) -> bool:
+    """Leere Zellen (ältere Sheet-Zeilen ohne Spalte) gelten als True."""
+    if isinstance(v, str):
+        return v.strip().upper() not in ("FALSE", "0", "NEIN")
+    try:
+        return bool(v) if v == v else True
+    except Exception:
+        return True
+
+
 def _num(v, ndigits: int) -> float:
     """Zahl gerundet; fehlende/leere Werte (z.B. alte Sheet-Zeilen) → NaN."""
     v = pd.to_numeric(v, errors="coerce")
@@ -172,6 +184,8 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
                 "16g geclippt": bool(jrow.get("clipped_16g", False)),
                 "Landungsart": jrow.get("landing_type", ""),
                 "Kommentar": jrow.get("comment", ""),
+                "In Auswertung": _as_bool(jrow.get("plausible", True)),
+                "Ausschlussgrund": jrow.get("exclusion_reason", "") or "",
             })
     df = pd.DataFrame(rows)
     if df.empty:
@@ -260,8 +274,9 @@ def show():
         st.info("Noch keine Sprünge ausgewertet.")
         return
 
+    n_excl = int((~df["In Auswertung"]).sum()) if "In Auswertung" in df.columns else 0
     c_a, c_b, c_c = st.columns(3)
-    c_a.metric("Sprünge total", len(df))
+    c_a.metric("Sprünge total", len(df), help=f"davon {n_excl} nicht in Auswertung" if n_excl else None)
     c_b.metric("Athleten", df["Athlet"].nunique())
     c_c.metric("Orte", df["Ort"].nunique())
 
@@ -296,14 +311,22 @@ def show():
         df_filtered = df_filtered[df_filtered["Hinweis"].astype(str).str.strip() != ""].reset_index(drop=True)
 
     st.markdown(f"**{len(df_filtered)} Sprünge gefiltert**")
+    if "In Auswertung" in df_filtered.columns:
+        n_out = int((~df_filtered["In Auswertung"]).sum())
+        if n_out:
+            st.caption(f"{n_out} Sprünge sind nicht in der Auswertung (Flugzeit < 1.4 s oder mehr als 3 Sprünge im Run). "
+                       "Sie erscheinen in den Tabellen mit «In Auswertung = False», zählen aber nicht in Kennzahlen und Export.")
+        df_eval = df_filtered[df_filtered["In Auswertung"]].reset_index(drop=True)
+    else:
+        df_eval = df_filtered
 
     # ── Kennzahlen Übersicht ──────────────────────────────────────────────
-    if not df_filtered.empty:
+    if not df_eval.empty:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ø Peak (g)", f"{df_filtered['Peak (g)'].mean():.2f}")
-        c2.metric("Max. Peak (g)", f"{df_filtered['Peak (g)'].max():.2f}")
-        c3.metric("Ø Flugzeit (s)", f"{df_filtered['Flugzeit (s)'].mean():.3f}")
-        c4.metric("Geclippt (16g)", int(df_filtered["16g geclippt"].sum()))
+        c1.metric("Ø Peak (g)", f"{df_eval['Peak (g)'].mean():.2f}")
+        c2.metric("Max. Peak (g)", f"{df_eval['Peak (g)'].max():.2f}")
+        c3.metric("Ø Flugzeit (s)", f"{df_eval['Flugzeit (s)'].mean():.3f}")
+        c4.metric("Geclippt (16g)", int(df_eval["16g geclippt"].sum()))
 
     # ── Tabelle pro Athlet ────────────────────────────────────────────────
     st.divider()
@@ -312,32 +335,35 @@ def show():
 
     all_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
                 "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
-                "Impuls (g·s)", "Landeimpuls 0.25 s (g·s)", "16g geclippt", "Landungsart", "Kommentar"]
+                "Impuls (g·s)", "Landeimpuls 0.25 s (g·s)", "16g geclippt", "Landungsart", "Kommentar",
+                "In Auswertung", "Ausschlussgrund"]
     display_cols = [c for c in all_cols if c in df_filtered.columns]
 
     for grp_val, grp_df in df_filtered.groupby(group_col, sort=True):
         with st.expander(f"**{grp_val}** — {len(grp_df)} Sprünge", expanded=False):
             st.dataframe(grp_df[display_cols].reset_index(drop=True), use_container_width=True)
 
-            # Kennzahlen pro Gruppe
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Ø Peak (g)", f"{grp_df['Peak (g)'].mean():.2f}")
-            c2.metric("Ø Flugzeit (s)", f"{grp_df['Flugzeit (s)'].mean():.3f}")
-            c3.metric("Max. Peak (g)", f"{grp_df['Peak (g)'].max():.2f}")
+            # Kennzahlen pro Gruppe (nur Sprünge in der Auswertung)
+            g_eval = grp_df[grp_df["In Auswertung"]] if "In Auswertung" in grp_df.columns else grp_df
+            if not g_eval.empty:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Ø Peak (g)", f"{g_eval['Peak (g)'].mean():.2f}")
+                c2.metric("Ø Flugzeit (s)", f"{g_eval['Flugzeit (s)'].mean():.3f}")
+                c3.metric("Max. Peak (g)", f"{g_eval['Peak (g)'].max():.2f}")
 
     # ── Durchschnittlicher Impact ─────────────────────────────────────────
     st.divider()
     st.subheader("Durchschnittlicher Impact")
-    if not df_filtered.empty:
+    if not df_eval.empty:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ø Peak (g) — alle Sprünge", f"{df_filtered['Peak (g)'].mean():.2f}")
-        c2.metric("Median Peak (g)", f"{df_filtered['Peak (g)'].median():.2f}")
-        c3.metric("Max. Peak (g)", f"{df_filtered['Peak (g)'].max():.2f}")
-        c4.metric("Anzahl Sprünge", len(df_filtered))
+        c1.metric("Ø Peak (g) — alle Sprünge", f"{df_eval['Peak (g)'].mean():.2f}")
+        c2.metric("Median Peak (g)", f"{df_eval['Peak (g)'].median():.2f}")
+        c3.metric("Max. Peak (g)", f"{df_eval['Peak (g)'].max():.2f}")
+        c4.metric("Anzahl Sprünge", len(df_eval))
 
         # Pro Position
         st.markdown("**Ø Peak (g) pro Sensorposition:**")
-        pos_summary = df_filtered.groupby("Position")["Peak (g)"].agg(["mean", "median", "max", "count"]).round(2)
+        pos_summary = df_eval.groupby("Position")["Peak (g)"].agg(["mean", "median", "max", "count"]).round(2)
         pos_summary.columns = ["Ø Peak (g)", "Median (g)", "Max. (g)", "Anzahl"]
         st.dataframe(pos_summary, use_container_width=True)
 
@@ -388,11 +414,11 @@ def show():
         buf.seek(0)
         return buf.getvalue()
 
-    orte = sorted(df_filtered["Ort"].dropna().unique())
+    orte = sorted(df_eval["Ort"].dropna().unique())
     cols = st.columns(len(orte) + 1)
 
     for i, ort in enumerate(orte):
-        df_ort = df_filtered[df_filtered["Ort"] == ort]
+        df_ort = df_eval[df_eval["Ort"] == ort]
         cols[i].download_button(
             f"Excel {ort}",
             data=_make_excel(df_ort, ort),
@@ -403,7 +429,7 @@ def show():
 
     cols[-1].download_button(
         "Excel Alle",
-        data=_make_excel(df_filtered, "Alle"),
+        data=_make_excel(df_eval, "Alle"),
         file_name="impactmessung_alle.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="dl_alle",

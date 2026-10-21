@@ -131,6 +131,33 @@ _BIAS_CORRECTION = {
 }
 
 
+# Plausibilität für die Auswertung (alle Sprünge werden angezeigt, nur plausible ausgewertet).
+# Abgeleitet aus Corvatsch 22.04.2026: Kicker-Sprünge fliegen ≥ 1.4 s; kürzere Ereignisse lagen per GPS
+# an einer Welle unterhalb der drei Kicker. Pro Run gibt es höchstens 3 Kicker → Sprünge 4+ ausschliessen.
+PLAUS_MIN_FLIGHT_S = 1.4
+PLAUS_MAX_PER_RUN = 3
+
+
+def mark_plausible(jumps_df: pd.DataFrame, max_per_run: int | None = PLAUS_MAX_PER_RUN,
+                   min_flight_s: float = PLAUS_MIN_FLIGHT_S) -> pd.DataFrame:
+    """Setzt 'plausible' (bool) und 'exclusion_reason' pro Sprung; Reihenfolge = zeitlich im Run."""
+    if jumps_df is None or jumps_df.empty:
+        return jumps_df
+    df = jumps_df.copy()
+    order = df.sort_values("landing_idx").index
+    reasons, n_ok = {}, 0
+    for i in order:
+        if float(df.at[i, "flight_time_s"]) < min_flight_s:
+            reasons[i] = f"Flugzeit < {min_flight_s:.1f} s"
+        elif max_per_run is not None and n_ok >= max_per_run:
+            reasons[i] = f"mehr als {max_per_run} Sprünge im Run"
+        else:
+            reasons[i] = ""; n_ok += 1
+    df["exclusion_reason"] = [reasons[i] for i in df.index]
+    df["plausible"] = df["exclusion_reason"] == ""
+    return df
+
+
 def apply_bias_correction(peak_g: float, position_label: str) -> float:
     """Wendet positionsspezifische Bias-Korrektur an (Validierung vs. Kraftmessplatte)."""
     corr = _BIAS_CORRECTION.get(position_label)
