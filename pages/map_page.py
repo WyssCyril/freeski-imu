@@ -272,7 +272,7 @@ def show():
             marker_colors = [f"rgb({rgb[0]},{rgb[1]},{rgb[2]})"] * len(df_d)
             hover = [meta.athlete_code] * len(df_d)
 
-        map_traces.append(go.Scattermapbox(
+        map_traces.append(go.Scattermap(
             lat=df_d["latitude [deg]"].tolist(),
             lon=df_d["longitude [deg]"].tolist(),
             mode="lines+markers",
@@ -287,7 +287,7 @@ def show():
         jp = td["jump_pos"]
         if not jp.empty:
             sizes = (jp["peak_res_g"] / jp["peak_res_g"].max() * 20 + 8).clip(8, 28).tolist()
-            map_traces.append(go.Scattermapbox(
+            map_traces.append(go.Scattermap(
                 lat=jp["lat"].tolist(),
                 lon=jp["lon"].tolist(),
                 mode="markers+text",
@@ -306,7 +306,7 @@ def show():
     all_lons = [lon for t in map_traces for lon in (t.lon or [])]
     fig_map = go.Figure(map_traces)
     fig_map.update_layout(
-        mapbox=dict(
+        map=dict(
             style="open-street-map",
             center=dict(lat=float(np.median(all_lats)), lon=float(np.median(all_lons))),
             zoom=13,

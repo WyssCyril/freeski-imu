@@ -236,7 +236,7 @@ def show():
     map_traces = []
     speed_chart_data = []
 
-    # Datenpunkte je Track als farbige Segmente via Scattermapbox
+    # Datenpunkte je Track als farbige Segmente via Scattermap
     for key, sess in filtered.items():
         meta = sess.get("meta")
         if not meta or meta.athlete_code not in sel_athletes:
@@ -254,8 +254,8 @@ def show():
         # Farbliste für jeden Punkt
         colors = [_speed_color(*rgb, float(s)) for s in speed_norm]
 
-        # Scattermapbox-Trace (Linie + Punkte)
-        map_traces.append(go.Scattermapbox(
+        # Scattermap-Trace (MapLibre) (Linie + Punkte)
+        map_traces.append(go.Scattermap(
             lat=df_d["latitude [deg]"].tolist(),
             lon=df_d["longitude [deg]"].tolist(),
             mode="lines+markers",
@@ -300,7 +300,7 @@ def show():
 
     fig_map = go.Figure(map_traces)
     fig_map.update_layout(
-        mapbox=dict(
+        map=dict(
             style="open-street-map",
             center=dict(lat=center_lat, lon=center_lon),
             zoom=12,
