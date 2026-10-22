@@ -290,66 +290,88 @@ def show():
                 st.error(f"Speichern fehlgeschlagen: {e}")
 
     # ── Filter ────────────────────────────────────────────────────────────
+    df["Landungsart"] = df["Landungsart"].fillna("").astype(str).str.strip().replace("", "ohne Angabe")
     col1, col2, col3 = st.columns(3)
     all_athletes = sorted(df["Athlet"].unique())
-    sel_athletes = col1.multiselect("Athlet", all_athletes, default=all_athletes)
+    sel_athletes = col1.multiselect("Athlet", all_athletes, default=all_athletes, key="res_f_ath")
     all_orte = sorted(df["Ort"].unique())
-    sel_orte = col2.multiselect("Ort", all_orte, default=all_orte)
-    all_pos = sorted(df["Position"].unique())
-    sel_pos = col3.multiselect("Sensorposition", all_pos, default=all_pos)
+    sel_orte = col2.multiselect("Ort", all_orte, default=all_orte, key="res_f_ort")
+    art_order = ["vorwärts", "switch", "crash", "ohne Angabe"]
+    all_arten = [a for a in art_order if a in set(df["Landungsart"])] + \
+                sorted(set(df["Landungsart"]) - set(art_order))
+    sel_arten = col3.multiselect("Landungsart", all_arten, default=all_arten, key="res_f_art")
+
+    with st.expander("Weitere Filter", expanded=False):
+        f1, f2, f3 = st.columns(3)
+        all_pos = sorted(df["Position"].unique())
+        sel_pos = f1.multiselect("Sensorposition", all_pos, default=all_pos, key="res_f_pos")
+        only_eval = f2.checkbox("Nur Sprünge in der Auswertung anzeigen", key="res_only_eval")
+        only_hint = f3.checkbox("Nur auffällige Sprünge anzeigen", key="only_hint")
 
     mask = (
         df["Athlet"].isin(sel_athletes) &
         df["Ort"].isin(sel_orte) &
+        df["Landungsart"].isin(sel_arten) &
         df["Position"].isin(sel_pos)
     )
     df_filtered = df[mask].reset_index(drop=True)
-
-    n_hint = int((df_filtered["Hinweis"].astype(str).str.strip() != "").sum())
-    only_hint = st.checkbox(f"Nur auffällige Sprünge anzeigen ({n_hint})", key="only_hint")
     if only_hint:
         df_filtered = df_filtered[df_filtered["Hinweis"].astype(str).str.strip() != ""].reset_index(drop=True)
-
-    st.markdown(f"**{len(df_filtered)} Sprünge gefiltert**")
     if "In Auswertung" in df_filtered.columns:
-        n_out = int((~df_filtered["In Auswertung"]).sum())
-        if n_out:
-            st.caption(f"{n_out} Sprünge sind nicht in der Auswertung (Flugzeit < 1.4 s oder mehr als 3 Sprünge im Run). "
-                       "Sie erscheinen in den Tabellen mit «In Auswertung = False», zählen aber nicht in Kennzahlen und Export.")
+        if only_eval:
+            df_filtered = df_filtered[df_filtered["In Auswertung"]].reset_index(drop=True)
         df_eval = df_filtered[df_filtered["In Auswertung"]].reset_index(drop=True)
     else:
         df_eval = df_filtered
+    n_out = len(df_filtered) - len(df_eval)
 
-    # ── Kennzahlen Übersicht ──────────────────────────────────────────────
+    # ── Kennzahlen (nur Sprünge in der Auswertung) ────────────────────────
+    st.markdown(f"**{len(df_filtered)} Sprünge gefiltert**"
+                + (f" · davon {n_out} nicht in der Auswertung (Flugzeit < 1.4 s oder mehr als 3 Sprünge im Run)" if n_out else ""))
     if not df_eval.empty:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ø Peak (g)", f"{df_eval['Peak (g)'].mean():.2f}")
-        c2.metric("Max. Peak (g)", f"{df_eval['Peak (g)'].max():.2f}")
-        c3.metric("Ø Flugzeit (s)", f"{df_eval['Flugzeit (s)'].mean():.3f}")
-        c4.metric("Geclippt (16g)", int(df_eval["16g geclippt"].sum()))
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("In Auswertung", len(df_eval))
+        c2.metric("Ø Peak (g)", f"{df_eval['Peak (g)'].mean():.2f}")
+        li = pd.to_numeric(df_eval.get("Landeimpuls 0.25 s (g·s)"), errors="coerce")
+        c3.metric("Ø Landeimpuls (g·s)", f"{li.mean():.2f}" if li.notna().any() else "–")
+        c4.metric("Ø Flugzeit (s)", f"{df_eval['Flugzeit (s)'].mean():.2f}")
+        c5.metric("Geclippt (16 g)", f"{df_eval['16g geclippt'].astype(bool).mean():.0%}")
 
-    # ── Tabelle pro Athlet ────────────────────────────────────────────────
+    # ── Alle Sprünge ──────────────────────────────────────────────────────
     st.divider()
-    group_by = st.radio("Gruppieren nach", ["Athlet", "Ort", "Position", "Datum"], horizontal=True)
-    group_col = {"Athlet": "Athlet", "Ort": "Ort", "Position": "Position", "Datum": "Datum"}[group_by]
-
-    all_cols = ["Hinweis", "Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Tricks / Notiz",
-                "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "TTP (s)", "RFD (g/s)",
-                "Impuls (g·s)", "Landeimpuls 0.25 s (g·s)", "16g geclippt", "Landungsart", "Kommentar",
-                "In Auswertung", "Ausschlussgrund"]
+    st.subheader("Alle geladenen Sprünge")
+    all_cols = ["In Auswertung", "Athlet", "Datum", "Ort", "Run", "Sprung", "Landungsart", "Tricks / Notiz",
+                "Flugzeit (s)", "Peak (g)", "Peak roh (g)", "Landeimpuls 0.25 s (g·s)", "TTP (s)", "RFD (g/s)",
+                "Impuls (g·s)", "16g geclippt", "Ausschlussgrund", "Hinweis", "Position", "Kommentar"]
     display_cols = [c for c in all_cols if c in df_filtered.columns]
+    sort_cols = [c for c in ["Athlet", "Datum", "Run", "Sprung"] if c in df_filtered.columns]
+    table = df_filtered.sort_values(sort_cols)[display_cols].reset_index(drop=True) if sort_cols else df_filtered[display_cols]
+    st.dataframe(
+        table, use_container_width=True, hide_index=True, height=min(600, 38 + 35 * max(len(table), 1)),
+        column_config={
+            "In Auswertung": st.column_config.CheckboxColumn("In Auswertung", help="Nur diese Sprünge zählen in Kennzahlen, Statistik und Export."),
+            "16g geclippt": st.column_config.CheckboxColumn("Geclippt"),
+            "Flugzeit (s)": st.column_config.NumberColumn(format="%.2f"),
+            "Peak (g)": st.column_config.NumberColumn("Peak korr. (g)", format="%.1f"),
+            "Peak roh (g)": st.column_config.NumberColumn(format="%.1f"),
+            "Landeimpuls 0.25 s (g·s)": st.column_config.NumberColumn("Landeimpuls (g·s)", format="%.2f"),
+            "TTP (s)": st.column_config.NumberColumn(format="%.3f"),
+        },
+    )
 
-    for grp_val, grp_df in df_filtered.groupby(group_col, sort=True):
-        with st.expander(f"**{grp_val}** — {len(grp_df)} Sprünge", expanded=False):
-            st.dataframe(grp_df[display_cols].reset_index(drop=True), use_container_width=True)
-
-            # Kennzahlen pro Gruppe (nur Sprünge in der Auswertung)
-            g_eval = grp_df[grp_df["In Auswertung"]] if "In Auswertung" in grp_df.columns else grp_df
-            if not g_eval.empty:
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Ø Peak (g)", f"{g_eval['Peak (g)'].mean():.2f}")
-                c2.metric("Ø Flugzeit (s)", f"{g_eval['Flugzeit (s)'].mean():.3f}")
-                c3.metric("Max. Peak (g)", f"{g_eval['Peak (g)'].max():.2f}")
+    # ── Übersicht Athlet × Landungsart ────────────────────────────────────
+    if not df_eval.empty:
+        st.markdown("**Übersicht pro Athlet und Landungsart** (nur Sprünge in der Auswertung)")
+        ev = df_eval.assign(
+            _li=pd.to_numeric(df_eval.get("Landeimpuls 0.25 s (g·s)"), errors="coerce"),
+            _clip=df_eval["16g geclippt"].astype(bool))
+        summ = ev.groupby(["Athlet", "Landungsart"], sort=True).agg(
+            Sprünge=("Sprung", "count"), Peak_korr=("Peak (g)", "mean"), Peak_roh_Median=("Peak roh (g)", "median"),
+            Landeimpuls=("_li", "mean"), Flugzeit=("Flugzeit (s)", "mean"), Geclippt=("_clip", "mean")).reset_index()
+        summ["Geclippt"] = (summ["Geclippt"] * 100).round(0)
+        summ = summ.rename(columns={"Peak_korr": "Ø Peak korr. (g)", "Peak_roh_Median": "Median Peak roh (g)",
+                                    "Landeimpuls": "Ø Landeimpuls (g·s)", "Flugzeit": "Ø Flugzeit (s)", "Geclippt": "Geclippt (%)"})
+        st.dataframe(summ.round(2), use_container_width=True, hide_index=True)
 
     # ── Durchschnittlicher Impact ─────────────────────────────────────────
     st.divider()
