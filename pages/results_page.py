@@ -194,6 +194,118 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
     return df.drop_duplicates(gsheets.KEY_COLS, keep="last").reset_index(drop=True)
 
 
+# ── Automatisches Speichern + Warnung bei ungespeicherten Korrekturen ─────────
+_FP_COLS = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Landungsart", "Tricks / Notiz", "Kommentar",
+            "Peak (g)", "Flugzeit (s)", "In Auswertung"]
+
+
+def _fresh_groups() -> set:
+    """Athlet/Tag/Ort/Position, die in dieser Sitzung frisch analysiert wurden (nicht aus dem Sheet geladen)."""
+    jr = st.session_state.get("jump_results", {})
+    return {(gsheets.norm_athlet(e["meta"].athlete_code), str(e["meta"].date), e["meta"].location, e["meta"].position_label)
+            for k, e in jr.items() if not k.startswith("import_") and e.get("meta") is not None
+            and e.get("jumps") is not None and not e["jumps"].empty}
+
+
+def _fingerprint(df: pd.DataFrame) -> str:
+    import hashlib
+    cols = [c for c in _FP_COLS if c in df.columns]
+    if df.empty or not cols:
+        return ""
+    d = df[cols].astype(str).sort_values(cols).to_csv(index=False)
+    return hashlib.md5(d.encode()).hexdigest()
+
+
+def _sheet_groups() -> set:
+    """Athlet/Tag/Ort/Position, die bereits im Sheet stehen (Datum im Format YYYYMMDD wie in den Metadaten)."""
+    df = gsheets.load()
+    if df.empty:
+        return set()
+    out = set()
+    for r in df[["Athlet", "Datum", "Ort", "Position"]].astype(str).itertuples(index=False):
+        d = r.Datum.strip()
+        if len(d) == 10 and d[2] == "." and d[5] == ".":
+            d = d[6:] + d[3:5] + d[:2]
+        out.add((gsheets.norm_athlet(r.Athlet), d, r.Ort, r.Position))
+    return out
+
+
+def save_results(sessions_loaded: dict) -> tuple[int, int]:
+    """Speichert alle aktuellen Ergebnisse ins Sheet und merkt sich den gespeicherten Stand."""
+    df = _collect_results(sessions_loaded)
+    n_new, n_upd = gsheets.save(df)
+    st.session_state["_saved_fp"] = _fingerprint(df)
+    st.session_state.setdefault("_autosaved_groups", set()).update(_fresh_groups())
+    return n_new, n_upd
+
+
+def autosave_and_warn(sessions_loaded: dict, where: str) -> None:
+    """
+    Neu analysierte Athleten werden einmal automatisch gespeichert.
+    Ändern sich danach Korrekturen (Landungsart, Kommentar, Trick …), erscheint eine Warnung mit Speichern-Knopf.
+    """
+    if not gsheets.enabled():
+        return
+    fresh = _fresh_groups()
+    if not fresh:
+        return
+    done = st.session_state.setdefault("_autosaved_groups", set())
+    skipped = st.session_state.setdefault("_autosave_skipped", set())
+    new = fresh - done - skipped
+    if new:
+        try:
+            existing = _sheet_groups()
+        except Exception as e:
+            st.error(f"Google Sheet nicht erreichbar, nicht gespeichert: {e}")
+            return
+        already = {g for g in new if g in existing}
+        if already:
+            # Nicht automatisch überschreiben: gespeicherte Landungsarten/Kommentare könnten verloren gehen
+            skipped.update(already)
+        if new - already:
+            try:
+                with st.spinner("Speichere automatisch im Google Sheet…"):
+                    save_results(sessions_loaded)
+                st.toast("Automatisch im Google Sheet gespeichert", icon="✅")
+            except Exception as e:
+                st.error(f"Automatisches Speichern fehlgeschlagen: {e}")
+            return
+    if fresh & skipped - done:
+        c1, c2 = st.columns([3, 1])
+        c1.warning("⚠ Dieser Athlet ist **bereits im Google Sheet gespeichert** und wurde deshalb nicht automatisch "
+                   "überschrieben. Speichern ersetzt die gespeicherte Version (inkl. Landungsarten und Kommentare) durch diese Analyse.")
+        if c2.button("Gespeicherte Version ersetzen", key=f"save_over_{where}"):
+            try:
+                with st.spinner("Speichere…"):
+                    save_results(sessions_loaded)
+                skipped.difference_update(fresh)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Speichern fehlgeschlagen: {e}")
+        return
+    if _fingerprint(_collect_results(sessions_loaded)) != st.session_state.get("_saved_fp"):
+        c1, c2 = st.columns([3, 1])
+        c1.warning("⚠ Du hast Korrekturen vorgenommen, die noch **nicht im Google Sheet gespeichert** sind. "
+                   "Beim Laden eines neuen Athleten oder Neuladen der Seite gehen sie verloren.")
+        if c2.button("Korrekturen jetzt speichern", type="primary", key=f"save_corr_{where}"):
+            try:
+                with st.spinner("Speichere…"):
+                    n_new, n_upd = save_results(sessions_loaded)
+                st.toast(f"Gespeichert: {n_new} neue, {n_upd} aktualisierte Sprünge", icon="✅")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Speichern fehlgeschlagen: {e}")
+
+
+def has_unsaved_corrections(sessions_loaded: dict) -> bool:
+    fresh = _fresh_groups()
+    if not fresh or not gsheets.enabled():
+        return False
+    if not fresh <= st.session_state.get("_autosaved_groups", set()):
+        return bool(fresh & st.session_state.get("_autosave_skipped", set()))
+    return _fingerprint(_collect_results(sessions_loaded)) != st.session_state.get("_saved_fp")
+
+
 def _sheet_sync():
     """Statuszeile + einmaliges Laden aus dem Google Sheet beim Start."""
     if not gsheets.enabled():
@@ -281,10 +393,12 @@ def show():
     c_c.metric("Orte", df["Ort"].nunique())
 
     if gsheets.enabled():
-        if st.button("In Google Sheet speichern", type="primary", key="gs_save"):
+        autosave_and_warn(sessions_loaded, "results")
+        if st.button("In Google Sheet speichern", key="gs_save",
+                     help="Neu analysierte Athleten werden automatisch gespeichert. Hier kannst du jederzeit manuell speichern."):
             try:
                 with st.spinner("Speichere…"):
-                    n_new, n_upd = gsheets.save(df)
+                    n_new, n_upd = save_results(sessions_loaded)
                 st.success(f"Gespeichert: {n_new} neue, {n_upd} aktualisierte Sprünge.")
             except Exception as e:
                 st.error(f"Speichern fehlgeschlagen: {e}")

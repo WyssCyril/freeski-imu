@@ -191,6 +191,18 @@ def show():
 
     # ── Upload: Dateien wählen → sofort laden ─────────────────────────────
     st.subheader("Dateien hochladen")
+    from pages.results_page import has_unsaved_corrections, save_results
+    if has_unsaved_corrections(st.session_state.get("loaded_sessions", {})):
+        c1, c2 = st.columns([3, 1])
+        c1.warning("⚠ Die Korrekturen des aktuellen Athleten sind **noch nicht gespeichert**. "
+                   "Wenn du jetzt einen neuen Athleten hochlädst, gehen sie verloren.")
+        if c2.button("Jetzt speichern", type="primary", key="save_corr_import"):
+            try:
+                with st.spinner("Speichere…"):
+                    save_results(st.session_state.get("loaded_sessions", {}))
+                st.rerun()
+            except Exception as e:
+                st.error(f"Speichern fehlgeschlagen: {e}")
     st.caption("IMU-Cut + GNSS eines Athleten wählen — Datum, Ort, Athlet und Position werden "
                "aus dem Dateinamen gelesen, die Sprunganalyse startet direkt. "
                "Der vorherige Athlet wird dabei aus dem Speicher entfernt (Resultate bleiben im Google Sheet).")

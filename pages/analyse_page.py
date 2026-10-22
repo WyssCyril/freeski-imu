@@ -579,6 +579,15 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
         st.markdown("**Sprünge — seitlich scrollen:**")
         _jump_scroller(df_imu, jumps_df, axis_vert, st.session_state[label_key])
 
+    # Korrekturen (Landungsart, Kommentar) aus den Eingabefeldern übernehmen, damit sie gespeichert werden
+    if not jumps_df.empty:
+        labels = st.session_state.get(label_key, {})
+        comments = st.session_state.get(f"comments_{key}_{sess_id}_{run_id}", {})
+        if "landing_type" not in jumps_df.columns:
+            jumps_df["landing_type"] = ""
+        jumps_df["landing_type"] = [labels.get(j, lt) for j, lt in zip(jumps_df["jump_id"], jumps_df["landing_type"])]
+        jumps_df["comment"] = [comments.get(j, "") for j in jumps_df["jump_id"]]
+
     if "jump_results" not in st.session_state:
         st.session_state["jump_results"] = {}
     st.session_state["jump_results"][f"{key}_{sess_id}_{run_id}"] = {
@@ -1130,4 +1139,7 @@ def show():
             with st.expander(exp_label, expanded=(len(run_ids) == 1)):
                 _render_run(cache_key, sel_session, run_id, result, key, meta, axis_vert)
 
+    from pages.results_page import autosave_and_warn
+    st.divider()
+    autosave_and_warn(sessions_loaded, "analyse")
     _free_memory_block(sessions_loaded)
