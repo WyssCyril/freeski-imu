@@ -189,7 +189,8 @@ def show():
                      if v.get("gnss") is not None or v.get("gnss_path")}
 
     if not gnss_sessions:
-        st.info("Keine GNSS-Daten geladen. Zuerst Daten mit GPS-Datei im Tab 'Daten laden' importieren.")
+        from pages import stored_gps
+        stored_gps.show("map")
         return
 
     # ── Auswahl ──────────────────────────────────────────────────────────

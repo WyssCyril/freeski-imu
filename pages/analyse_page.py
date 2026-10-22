@@ -591,7 +591,7 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
     if "jump_results" not in st.session_state:
         st.session_state["jump_results"] = {}
     st.session_state["jump_results"][f"{key}_{sess_id}_{run_id}"] = {
-        "jumps": jumps_df, "meta": meta, "df_imu": df_imu,
+        "jumps": jumps_df, "meta": meta, "df_imu": df_imu, "gnss": result["sessions"][sess_id].get("gnss"),
         "run": f"{sess_id}-{run_id}",
         "run_note": st.session_state.get(run_note_key, ""),  # run_note_key = f"rn_{key}_{sess_id}_{run_id}"
     }
@@ -943,7 +943,7 @@ def show():
                 if j is None or j.empty:
                     continue
                 jr_all.setdefault(f"{key}_{s_id}_{r_id}", {
-                    "jumps": j, "meta": meta, "run": f"{s_id}-{r_id}", "df_imu": r_data.get("df_imu"),
+                    "jumps": j, "meta": meta, "run": f"{s_id}-{r_id}", "df_imu": r_data.get("df_imu"), "gnss": s_data.get("gnss"),
                     "run_note": st.session_state.get(f"rn_{key}_{s_id}_{r_id}", ""),
                 })
 

@@ -206,7 +206,8 @@ def show():
     gnss_sessions.update(gnss_extra)
 
     if not gnss_sessions:
-        st.info("Noch keine GNSS-Daten geladen. Dateien oben hochladen oder im Tab 'Daten laden' laden.")
+        from pages import stored_gps
+        stored_gps.show("raw")
         return
 
     # ── Ort wählen ────────────────────────────────────────────────────────

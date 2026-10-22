@@ -244,6 +244,9 @@ def build_curve_rows() -> pd.DataFrame:
         if col is None:
             continue
         acc = df_imu[col].values
+        gs = e.get("gnss")
+        t_imu = df_imu["imuTimestamp [us]"].values if "imuTimestamp [us]" in df_imu.columns else None
+        has_pos = (gs is not None and t_imu is not None and {"timestamp [us]", "latitude [deg]", "longitude [deg]"} <= set(gs.columns))
         try:
             date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y")
         except Exception:
@@ -255,8 +258,65 @@ def build_curve_rows() -> pd.DataFrame:
                          "Position": m.position_label, "Run": e.get("run", ""), "Sprung": j.get("jump_id", ""),
                          "Start (s rel. Landung)": round((i0 - la) / 200, 3), "Absprung (s rel. Landung)": round((to - la) / 200, 3),
                          "Peak (s rel. Landung)": round((pk - la) / 200, 3), "Abtastrate (Hz)": 200,
+                         **(_jump_position(gs, t_imu, to, la) if has_pos else {}),
                          "accRes (g)": ",".join(f"{v:.2f}" for v in acc[i0:i1])})
     return pd.DataFrame(rows)
+
+
+def _jump_position(gs: pd.DataFrame, t_imu, to: int, la: int) -> dict:
+    """GPS-Position bei Absprung und Landung (nächster GNSS-Punkt in der Zeit)."""
+    ts = gs["timestamp [us]"].values
+    def at(i_imu):
+        k = int(np.argmin(np.abs(ts - t_imu[min(i_imu, len(t_imu) - 1)])))
+        return gs.iloc[k]
+    a, l = at(to), at(la)
+    out = {"Lat Absprung": round(float(a["latitude [deg]"]), 7), "Lon Absprung": round(float(a["longitude [deg]"]), 7),
+           "Lat Landung": round(float(l["latitude [deg]"]), 7), "Lon Landung": round(float(l["longitude [deg]"]), 7)}
+    if "altitude [m]" in gs.columns:
+        out["Höhe Landung (m)"] = round(float(l["altitude [m]"]), 1)
+    if "time [POSIXms]" in gs.columns:
+        out["Zeit Landung (POSIX ms)"] = int(l["time [POSIXms]"])
+    return out
+
+
+GNSS_STEP_S = 2   # ein GPS-Punkt alle 2 s im Sheet (Karte/Höhenprofil reichen damit)
+
+
+def build_gnss_rows(sessions_loaded: dict) -> pd.DataFrame:
+    """Ausgedünnte GPS-Tracks der frisch analysierten Athleten für das Blatt «GNSS»."""
+    fresh = _fresh_groups()
+    rows = []
+    for s in sessions_loaded.values():
+        m, g = s.get("meta"), s.get("gnss")
+        if m is None or g is None or g.empty:
+            continue
+        if (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, m.position_label) not in fresh:
+            continue
+        need = {"time [POSIXms]", "latitude [deg]", "longitude [deg]"}
+        if not need <= set(g.columns):
+            continue
+        d = g[(g["time [POSIXms]"] > 1.58e12) & (g["latitude [deg]"].abs() > 1) & (g["longitude [deg]"].abs() > 1)].copy()
+        if d.empty:
+            continue
+        d["_b"] = (d["time [POSIXms]"] // (GNSS_STEP_S * 1000)).astype("int64")
+        d = d.groupby("_b", as_index=False).first()
+        if {"speedN [m/s]", "speedE [m/s]"} <= set(d.columns):
+            spd = np.sqrt(d["speedN [m/s]"] ** 2 + d["speedE [m/s]"] ** 2 + d.get("speedD [m/s]", 0) ** 2) * 3.6
+        elif "speed [m/s]" in d.columns:
+            spd = d["speed [m/s]"] * 3.6
+        else:
+            spd = pd.Series(np.nan, index=d.index)
+        try:
+            date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y")
+        except Exception:
+            date_fmt = str(m.date)
+        part = pd.DataFrame({"Athlet": gsheets.norm_athlet(m.athlete_code), "Datum": date_fmt, "Ort": m.location,
+                             "Position": m.position_label, "Zeit (POSIX ms)": d["time [POSIXms]"].astype("int64"),
+                             "Lat": d["latitude [deg]"].round(7), "Lon": d["longitude [deg]"].round(7),
+                             "Höhe (m)": d.get("altitude [m]", pd.Series(np.nan, index=d.index)).round(1),
+                             "Speed (km/h)": spd.round(1)})
+        rows.append(part)
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
 def save_results(sessions_loaded: dict) -> tuple[int, int]:
@@ -268,8 +328,12 @@ def save_results(sessions_loaded: dict) -> tuple[int, int]:
     except Exception as e:
         st.warning(f"Kurven konnten nicht gespeichert werden: {e}")
     try:
-        from pages import stored_view
-        stored_view.clear_cache()
+        gsheets.save_gnss(build_gnss_rows(sessions_loaded))
+    except Exception as e:
+        st.warning(f"GPS-Tracks konnten nicht gespeichert werden: {e}")
+    try:
+        from pages import stored_view, stored_gps
+        stored_view.clear_cache(); stored_gps.clear_cache()
     except Exception:
         pass
     st.session_state["_saved_fp"] = _fingerprint(df)

@@ -123,27 +123,50 @@ def load_curves() -> pd.DataFrame:
     return df
 
 
-def save_curves(df: pd.DataFrame) -> int:
-    """Ersetzt die Kurven der enthaltenen Athleten (Athlet/Datum/Ort/Position) im Blatt «Kurven»."""
+GNSS_WS = "GNSS"
+
+
+def _replace_groups(ws_name: str, df: pd.DataFrame, key_cols: list, loader) -> int:
+    """Ersetzt im Blatt ws_name alle Zeilen der in df enthaltenen Gruppen (Athlet/Datum/Ort/Position); Rest bleibt."""
     if df.empty:
         return 0
     df = df.copy()
     df["Athlet"] = df["Athlet"].map(norm_athlet)
-    for c in CURVE_KEY_COLS:
+    for c in GROUP_COLS:
         df[c] = df[c].astype(str)
-    existing = load_curves()
+    existing = loader()
     if not existing.empty:
-        for c in CURVE_KEY_COLS:
+        for c in GROUP_COLS:
             existing[c] = existing[c].astype(str)
         groups = set(map(tuple, df[GROUP_COLS].drop_duplicates().values))
         keep = ~existing[GROUP_COLS].apply(tuple, axis=1).isin(groups)
         df = pd.concat([existing[keep], df], ignore_index=True)
-    df = df.drop_duplicates(CURVE_KEY_COLS, keep="last").fillna("")
+    if key_cols:
+        df = df.drop_duplicates(key_cols, keep="last")
+    df = df.fillna("")
     cols = list(df.columns)
-    ws = _worksheet(CURVES_WS)
+    ws = _worksheet(ws_name)
     ws.clear()
     ws.update([cols] + df.astype(object).values.tolist(), value_input_option="RAW")
     return len(df)
+
+
+def save_curves(df: pd.DataFrame) -> int:
+    """Kurvenausschnitte + Sprungpositionen pro Sprung (Blatt «Kurven»)."""
+    return _replace_groups(CURVES_WS, df, CURVE_KEY_COLS, load_curves)
+
+
+def load_gnss() -> pd.DataFrame:
+    """Gespeicherte GPS-Tracks (ausgedünnt), eine Zeile pro Punkt."""
+    df = pd.DataFrame(_worksheet(GNSS_WS).get_all_records())
+    if "Athlet" in df.columns:
+        df["Athlet"] = df["Athlet"].map(norm_athlet)
+    return df
+
+
+def save_gnss(df: pd.DataFrame) -> int:
+    """GPS-Tracks pro Athlet/Tag (Blatt «GNSS»)."""
+    return _replace_groups(GNSS_WS, df, ["Athlet", "Datum", "Ort", "Position", "Zeit (POSIX ms)"], load_gnss)
 
 
 def sheet_url() -> str:
