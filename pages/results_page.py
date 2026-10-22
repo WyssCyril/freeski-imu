@@ -112,6 +112,11 @@ def _import_df(df: pd.DataFrame) -> int:
     return count
 
 
+def _is_crash(v) -> bool:
+    """Stürze werden nicht ausgewertet (Methode Masterarbeit)."""
+    return str(v).strip().lower() == "crash"
+
+
 def _as_bool(v) -> bool:
     """Leere Zellen (ältere Sheet-Zeilen ohne Spalte) gelten als True."""
     if isinstance(v, str):
@@ -184,8 +189,8 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
                 "16g geclippt": bool(jrow.get("clipped_16g", False)),
                 "Landungsart": jrow.get("landing_type", ""),
                 "Kommentar": jrow.get("comment", ""),
-                "In Auswertung": _as_bool(jrow.get("plausible", True)),
-                "Ausschlussgrund": jrow.get("exclusion_reason", "") or "",
+                "In Auswertung": _as_bool(jrow.get("plausible", True)) and not _is_crash(jrow.get("landing_type", "")),
+                "Ausschlussgrund": (jrow.get("exclusion_reason", "") or "") or ("Sturz" if _is_crash(jrow.get("landing_type", "")) else ""),
             })
     df = pd.DataFrame(rows)
     if df.empty:
@@ -631,7 +636,7 @@ def show():
 
     # ── Kennzahlen (nur Sprünge in der Auswertung) ────────────────────────
     st.markdown(f"**{len(df_filtered)} Sprünge gefiltert**"
-                + (f" · davon {n_out} nicht in der Auswertung (Flugzeit < 1.4 s oder mehr als 3 Sprünge im Run)" if n_out else ""))
+                + (f" · davon {n_out} nicht in der Auswertung (Flugzeit < 1.4 s, mehr als 3 Sprünge im Run oder Sturz)" if n_out else ""))
     if not df_eval.empty:
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("In Auswertung", len(df_eval))

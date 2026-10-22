@@ -55,10 +55,12 @@ def show():
     # Nur plausible Sprünge auswerten (Spalte fehlt bei älteren Daten → alle)
     if "plausible" in all_jumps.columns:
         pl = all_jumps["plausible"].map(lambda v: str(v).strip().upper() not in ("FALSE", "0") if v == v and v != "" else True)
+        if "landing_type" in all_jumps.columns:
+            pl = pl & (all_jumps["landing_type"].astype(str).str.strip().str.lower() != "crash")
         n_out = int((~pl).sum())
         all_jumps = all_jumps[pl].reset_index(drop=True)
         if n_out:
-            st.caption(f"{n_out} Sprünge nicht in der Auswertung (Flugzeit < 1.4 s oder mehr als 3 im Run).")
+            st.caption(f"{n_out} Sprünge nicht in der Auswertung (Flugzeit < 1.4 s, mehr als 3 im Run oder Sturz).")
         if all_jumps.empty:
             return
 
