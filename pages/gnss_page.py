@@ -86,6 +86,13 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
     dist_km = np.sqrt(dlat**2 + dlon**2)
     df = df[dist_km <= 20].reset_index(drop=True)
 
+    # Positions- und Höhensprünge entfernen (max. 100 km/h zwischen Punkten), siehe utils/gnss_clean.py
+    if "time [POSIXms]" in df.columns and len(df) > 3:
+        from utils.gnss_clean import clean_mask
+        df = df.sort_values("time [POSIXms]").reset_index(drop=True)
+        df = df[clean_mask(df["latitude [deg]"], df["longitude [deg]"], df["time [POSIXms]"],
+                           df.get("altitude [m]"), df.get("speed_kmh"))].reset_index(drop=True)
+
     # Koordinaten glätten (Medianfilter, Fenster 5)
     df["latitude [deg]"]  = df["latitude [deg]"].rolling(5, center=True, min_periods=1).median()
     df["longitude [deg]"] = df["longitude [deg]"].rolling(5, center=True, min_periods=1).median()
@@ -174,9 +181,27 @@ def _load_gnss_upload_section():
                 st.session_state["_gnss_upload_staged"] = {}
                 if loaded_count:
                     st.success(f"{loaded_count} GNSS-Datei(en) geladen.")
+                # Tracks der Athleten mit Sprungauswertung automatisch ins Google Sheet übernehmen
+                from utils import gsheets as _gs
+                if _gs.enabled() and gnss_extra:
+                    from pages.results_page import store_gnss_uploads
+                    try:
+                        with st.spinner("Übernehme GPS-Tracks ins Google Sheet…"):
+                            taken, skipped = store_gnss_uploads(gnss_extra)
+                        st.session_state["_gnss_store_msg"] = (taken, skipped)
+                    except Exception as e:
+                        st.session_state["_gnss_store_msg"] = ([], [f"Fehler: {e}"])
                 for err in errors:
                     st.warning(f"Fehler: {err}")
                 st.rerun()
+
+        msg = st.session_state.get("_gnss_store_msg")
+        if msg:
+            taken, skipped = msg
+            if taken:
+                st.success("Ins Google Sheet übernommen: " + "; ".join(taken))
+            if skipped:
+                st.info("Nicht übernommen (keine Sprungauswertung zu diesem Athlet/Tag/Sensor): " + "; ".join(skipped))
 
         # Geladene GNSS-only-Dateien anzeigen
         if gnss_extra:

@@ -65,6 +65,12 @@ def show(mode: str = "map"):
         return
     for c in ["Lat", "Lon", "Höhe (m)", "Speed (km/h)", "Zeit (POSIX ms)"]:
         g_day[c] = pd.to_numeric(g_day[c], errors="coerce")
+    if st.checkbox("GPS-Ausreisser entfernen (> 100 km/h, Positions- und Höhensprünge)", value=True, key=f"sg_clean_{mode}"):
+        from utils.gnss_clean import clean_df
+        n0 = len(g_day)
+        g_day = clean_df(g_day, group="Athlet")
+        if n0 - len(g_day):
+            st.caption(f"{n0 - len(g_day)} von {n0} GPS-Punkten als Ausreisser entfernt.")
     g_day["_t"] = pd.to_datetime(g_day["Zeit (POSIX ms)"], unit="ms", utc=True).dt.tz_convert("Europe/Zurich")
     color = {a: _COLORS[i % len(_COLORS)] for i, a in enumerate(aths)}
 

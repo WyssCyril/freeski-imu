@@ -62,6 +62,13 @@ def _load_gnss(sess: dict) -> pd.DataFrame | None:
     dist_km = np.sqrt(dlat**2 + dlon**2)
     df = df[dist_km <= 20].reset_index(drop=True)
 
+    # Positions- und Höhensprünge entfernen (max. 100 km/h zwischen Punkten), siehe utils/gnss_clean.py
+    if "time [POSIXms]" in df.columns and len(df) > 3:
+        from utils.gnss_clean import clean_mask
+        df = df.sort_values("time [POSIXms]").reset_index(drop=True)
+        df = df[clean_mask(df["latitude [deg]"], df["longitude [deg]"], df["time [POSIXms]"],
+                           df.get("altitude [m]"), df.get("speed_kmh"))].reset_index(drop=True)
+
     # Koordinaten glätten (Medianfilter, Fenster 5)
     df["latitude [deg]"]  = df["latitude [deg]"].rolling(5, center=True, min_periods=1).median()
     df["longitude [deg]"] = df["longitude [deg]"].rolling(5, center=True, min_periods=1).median()

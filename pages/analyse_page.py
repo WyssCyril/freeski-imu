@@ -798,6 +798,19 @@ def show():
                     continue
         results[key] = st.session_state[cache_key]
 
+    # ── Datenprüfung (Dateien + Sprungerkennung) ─────────────────────────
+    from utils.data_check import check_analysis
+    for key in list(results):
+        sess = sessions_loaded[key]
+        sess["checks_all"] = list(sess.get("checks", [])) + check_analysis(results[key])
+        msgs = sess["checks_all"]
+        if msgs:
+            n_err = sum(1 for lvl, _ in msgs if lvl == "fehler")
+            title = f"Datenprüfung {_pos_label(key)}: " + (f"{n_err} Problem(e) gefunden – Daten werden nicht automatisch gespeichert"
+                                                           if n_err else "Hinweise")
+            box = st.error if n_err else st.warning
+            box(title + "\n\n" + "\n".join(f"- {'❌' if lvl == 'fehler' else '⚠'} {m}" for lvl, m in msgs))
+
     if not results:
         return
     # Sensoren ohne Ergebnis (z.B. leere Datei) nicht weiter verarbeiten

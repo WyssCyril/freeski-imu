@@ -151,9 +151,10 @@ def show():
                 try:
                     imu_df  = load_imu_raw(p["imu_path"])
                     gnss_df = load_gnss_raw(p["gnss_path"]) if p["gnss_path"] else None
+                    from utils.data_check import check_files
                     loaded[key] = {"imu": imu_df, "gnss": gnss_df,
                                    "imu_path": p["imu_path"], "gnss_path": p["gnss_path"],
-                                   "meta": p["meta"]}
+                                   "meta": p["meta"], "checks": check_files(imu_df, gnss_df)}
                 except Exception as e:
                     st.warning(f"Fehler bei {p['meta'].filename}: {e}")
             prog.empty()
@@ -257,6 +258,8 @@ def show():
                 try:
                     entry = _load_staged_entry(base, staged[base])
                     if entry:
+                        from utils.data_check import check_files
+                        entry["checks"] = check_files(entry.get("imu"), entry.get("gnss"))
                         existing[entry.pop("key")] = entry
                 except Exception as e:
                     errors.append(f"{base}: {e}")

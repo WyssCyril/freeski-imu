@@ -139,18 +139,21 @@ def _collect_results(sessions_loaded: dict) -> pd.DataFrame:
     rows = []
 
     def _group(m):
-        return (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, m.position_label)
+        return (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, _pos_label(m))
 
     # Frisch analysierte Athleten (Tag+Sensor) ersetzen die aus dem Sheet geladenen Zeilen komplett
     fresh_groups = {
         _group(e["meta"]) for k, e in jump_results.items()
         if not k.startswith("import_") and e.get("meta") is not None
     }
+    blocked = _blocked_groups(sessions_loaded or {})
     for run_key, entry in jump_results.items():
         jumps = entry.get("jumps")
         m = entry.get("meta")
         if jumps is None or (hasattr(jumps, "empty") and jumps.empty):
             continue
+        if not run_key.startswith("import_") and m is not None and _group(m) in blocked:
+            continue   # Datenprüfung mit Fehlern, noch nicht freigegeben
         if run_key.startswith("import_") and m is not None and _group(m) in fresh_groups:
             continue
         try:
@@ -207,7 +210,7 @@ _FP_COLS = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung", "Landungsart"
 def _fresh_groups() -> set:
     """Athlet/Tag/Ort/Position, die in dieser Sitzung frisch analysiert wurden (nicht aus dem Sheet geladen)."""
     jr = st.session_state.get("jump_results", {})
-    return {(gsheets.norm_athlet(e["meta"].athlete_code), str(e["meta"].date), e["meta"].location, e["meta"].position_label)
+    return {(gsheets.norm_athlet(e["meta"].athlete_code), str(e["meta"].date), e["meta"].location, _pos_label(e["meta"]))
             for k, e in jr.items() if not k.startswith("import_") and e.get("meta") is not None
             and e.get("jumps") is not None and not e["jumps"].empty}
 
@@ -287,15 +290,24 @@ def _jump_position(gs: pd.DataFrame, t_imu, to: int, la: int) -> dict:
 GNSS_STEP_S = 2   # ein GPS-Punkt alle 2 s im Sheet (Karte/Höhenprofil reichen damit)
 
 
-def build_gnss_rows(sessions_loaded: dict) -> pd.DataFrame:
-    """Ausgedünnte GPS-Tracks der frisch analysierten Athleten für das Blatt «GNSS»."""
-    fresh = _fresh_groups()
+_POS_LABEL = {"Bauch": "Bauch", "Bau1ch": "Bauch", "Fuss_re": "Fuss rechts", "Fuss_li": "Fuss links",
+              "FussRe": "Fuss rechts", "FussLi": "Fuss links"}
+
+
+def _pos_label(m) -> str:
+    """Positionsbezeichnung wie im Sheet («Bauch», «Fuss rechts» …), unabhängig vom Ladeweg."""
+    return _POS_LABEL.get(getattr(m, "position", ""), m.position_label)
+
+
+def build_gnss_rows(sessions_loaded: dict, only_groups: set | None = None) -> pd.DataFrame:
+    """Ausgedünnte, bereinigte GPS-Tracks für das Blatt «GNSS» (Standard: frisch analysierte Athleten)."""
+    fresh = _fresh_groups() if only_groups is None else only_groups
     rows = []
     for s in sessions_loaded.values():
         m, g = s.get("meta"), s.get("gnss")
         if m is None or g is None or g.empty:
             continue
-        if (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, m.position_label) not in fresh:
+        if (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, _pos_label(m)) not in fresh:
             continue
         need = {"time [POSIXms]", "latitude [deg]", "longitude [deg]"}
         if not need <= set(g.columns):
@@ -316,12 +328,40 @@ def build_gnss_rows(sessions_loaded: dict) -> pd.DataFrame:
         except Exception:
             date_fmt = str(m.date)
         part = pd.DataFrame({"Athlet": gsheets.norm_athlet(m.athlete_code), "Datum": date_fmt, "Ort": m.location,
-                             "Position": m.position_label, "Zeit (POSIX ms)": d["time [POSIXms]"].astype("int64"),
+                             "Position": _pos_label(m), "Zeit (POSIX ms)": d["time [POSIXms]"].astype("int64"),
                              "Lat": d["latitude [deg]"].round(7), "Lon": d["longitude [deg]"].round(7),
                              "Höhe (m)": d.get("altitude [m]", pd.Series(np.nan, index=d.index)).round(1),
                              "Speed (km/h)": spd.round(1)})
-        rows.append(part)
+        from utils.gnss_clean import clean_df
+        rows.append(clean_df(part))
     return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def store_gnss_uploads(gnss_sessions: dict) -> tuple[list, list]:
+    """
+    GNSS-Dateien (ohne IMU) ins Blatt «GNSS» übernehmen, wenn es zum selben Athlet/Datum/Ort/Sensor
+    eine Sprungauswertung im Sheet gibt. Rückgabe: (übernommen, übersprungen) als Labels.
+    """
+    existing = _sheet_groups()
+    taken, skipped, groups = [], [], set()
+    for k, s in gnss_sessions.items():
+        m = s.get("meta")
+        if m is None:
+            skipped.append(k); continue
+        g = (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, _pos_label(m))
+        lbl = f"A{g[0]} · {g[1]} · {g[2]} · {g[3]}"
+        (taken if g in existing else skipped).append(lbl)
+        if g in existing:
+            groups.add(g)
+    if groups:
+        rows = build_gnss_rows(gnss_sessions, only_groups=groups)
+        gsheets.save_gnss(rows)
+        try:
+            from pages import stored_gps
+            stored_gps.clear_cache()
+        except Exception:
+            pass
+    return taken, skipped
 
 
 def save_results(sessions_loaded: dict) -> tuple[int, int]:
@@ -358,7 +398,17 @@ def autosave_and_warn(sessions_loaded: dict, where: str) -> None:
         return
     done = st.session_state.setdefault("_autosaved_groups", set())
     skipped = st.session_state.setdefault("_autosave_skipped", set())
-    new = fresh - done - skipped
+    blocked = _blocked_groups(sessions_loaded) & fresh - done
+    if blocked:
+        c1, c2 = st.columns([3, 1])
+        c1.error("❌ Die **Datenprüfung** hat bei " + ", ".join(f"A{g[0]} ({g[1]}, {g[3]})" for g in sorted(blocked))
+                 + " Probleme gefunden (Details oben in der Sprunganalyse). Diese Daten werden **nicht automatisch "
+                   "gespeichert** und erscheinen nicht in den Auswertungen.")
+        if c2.button("Trotzdem übernehmen", key=f"override_{where}",
+                     help="Nur wählen, wenn du die Meldungen geprüft hast und die Daten trotzdem verwenden willst."):
+            st.session_state.setdefault("_check_override", set()).update(blocked)
+            st.rerun()
+    new = fresh - done - skipped - blocked
     if new:
         try:
             existing = _sheet_groups()
@@ -402,6 +452,21 @@ def autosave_and_warn(sessions_loaded: dict, where: str) -> None:
                 st.rerun()
             except Exception as e:
                 st.error(f"Speichern fehlgeschlagen: {e}")
+
+
+def _blocked_groups(sessions_loaded: dict) -> set:
+    """Gruppen mit Fehlern in der Datenprüfung, die nicht ausdrücklich freigegeben wurden."""
+    override = st.session_state.get("_check_override", set())
+    out = set()
+    for s in sessions_loaded.values():
+        m = s.get("meta")
+        msgs = s.get("checks_all", s.get("checks", []))
+        if m is None or not any(lvl == "fehler" for lvl, _ in msgs):
+            continue
+        g = (gsheets.norm_athlet(m.athlete_code), str(m.date), m.location, _pos_label(m))
+        if g not in override:
+            out.add(g)
+    return out
 
 
 def has_unsaved_corrections(sessions_loaded: dict) -> bool:
