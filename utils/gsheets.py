@@ -33,8 +33,12 @@ def enabled() -> bool:
         return False
 
 
+CURVES_WS = "Kurven"
+CURVE_KEY_COLS = ["Athlet", "Datum", "Ort", "Position", "Run", "Sprung"]
+
+
 @st.cache_resource(show_spinner=False)
-def _worksheet():
+def _worksheet(name: str = WORKSHEET):
     import gspread
     from google.oauth2.service_account import Credentials
 
@@ -43,9 +47,9 @@ def _worksheet():
     )
     sh = gspread.authorize(creds).open_by_key(st.secrets["sheet_id"])
     try:
-        return sh.worksheet(WORKSHEET)
+        return sh.worksheet(name)
     except gspread.WorksheetNotFound:
-        return sh.add_worksheet(WORKSHEET, rows=2000, cols=20)
+        return sh.add_worksheet(name, rows=2000, cols=20)
 
 
 def load() -> pd.DataFrame:
@@ -109,6 +113,37 @@ def save(df: pd.DataFrame) -> tuple[int, int]:
     ws.clear()
     ws.update(values, value_input_option="RAW")
     return n_new, n_upd
+
+
+def load_curves() -> pd.DataFrame:
+    """Gespeicherte Kurvenausschnitte (eine Zeile pro Sprung, Werte als Text)."""
+    df = pd.DataFrame(_worksheet(CURVES_WS).get_all_records())
+    if "Athlet" in df.columns:
+        df["Athlet"] = df["Athlet"].map(norm_athlet)
+    return df
+
+
+def save_curves(df: pd.DataFrame) -> int:
+    """Ersetzt die Kurven der enthaltenen Athleten (Athlet/Datum/Ort/Position) im Blatt «Kurven»."""
+    if df.empty:
+        return 0
+    df = df.copy()
+    df["Athlet"] = df["Athlet"].map(norm_athlet)
+    for c in CURVE_KEY_COLS:
+        df[c] = df[c].astype(str)
+    existing = load_curves()
+    if not existing.empty:
+        for c in CURVE_KEY_COLS:
+            existing[c] = existing[c].astype(str)
+        groups = set(map(tuple, df[GROUP_COLS].drop_duplicates().values))
+        keep = ~existing[GROUP_COLS].apply(tuple, axis=1).isin(groups)
+        df = pd.concat([existing[keep], df], ignore_index=True)
+    df = df.drop_duplicates(CURVE_KEY_COLS, keep="last").fillna("")
+    cols = list(df.columns)
+    ws = _worksheet(CURVES_WS)
+    ws.clear()
+    ws.update([cols] + df.astype(object).values.tolist(), value_input_option="RAW")
+    return len(df)
 
 
 def sheet_url() -> str:

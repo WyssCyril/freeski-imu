@@ -230,10 +230,48 @@ def _sheet_groups() -> set:
     return out
 
 
+CURVE_PRE_S, CURVE_POST_S = 0.4, 0.8   # Ausschnitt: 0.4 s vor Absprung bis 0.8 s nach Landung
+
+
+def build_curve_rows() -> pd.DataFrame:
+    """Kurvenausschnitte (accRes, 200 Hz) aller frisch analysierten Sprünge für das Blatt «Kurven»."""
+    rows = []
+    for k, e in st.session_state.get("jump_results", {}).items():
+        jumps, m, df_imu = e.get("jumps"), e.get("meta"), e.get("df_imu")
+        if k.startswith("import_") or m is None or df_imu is None or jumps is None or jumps.empty:
+            continue
+        col = "accRes [g]" if "accRes [g]" in df_imu.columns else None
+        if col is None:
+            continue
+        acc = df_imu[col].values
+        try:
+            date_fmt = pd.to_datetime(str(m.date), format="%Y%m%d").strftime("%d.%m.%Y")
+        except Exception:
+            date_fmt = str(m.date)
+        for _, j in jumps.iterrows():
+            to, la, pk = int(j["takeoff_idx"]), int(j["landing_idx"]), int(j.get("peak_res_idx", j["landing_idx"]))
+            i0 = max(0, to - int(CURVE_PRE_S * 200)); i1 = min(len(acc), la + int(CURVE_POST_S * 200) + 1)
+            rows.append({"Athlet": gsheets.norm_athlet(m.athlete_code), "Datum": date_fmt, "Ort": m.location,
+                         "Position": m.position_label, "Run": e.get("run", ""), "Sprung": j.get("jump_id", ""),
+                         "Start (s rel. Landung)": round((i0 - la) / 200, 3), "Absprung (s rel. Landung)": round((to - la) / 200, 3),
+                         "Peak (s rel. Landung)": round((pk - la) / 200, 3), "Abtastrate (Hz)": 200,
+                         "accRes (g)": ",".join(f"{v:.2f}" for v in acc[i0:i1])})
+    return pd.DataFrame(rows)
+
+
 def save_results(sessions_loaded: dict) -> tuple[int, int]:
     """Speichert alle aktuellen Ergebnisse ins Sheet und merkt sich den gespeicherten Stand."""
     df = _collect_results(sessions_loaded)
     n_new, n_upd = gsheets.save(df)
+    try:
+        gsheets.save_curves(build_curve_rows())
+    except Exception as e:
+        st.warning(f"Kurven konnten nicht gespeichert werden: {e}")
+    try:
+        from pages import stored_view
+        stored_view.clear_cache()
+    except Exception:
+        pass
     st.session_state["_saved_fp"] = _fingerprint(df)
     st.session_state.setdefault("_autosaved_groups", set()).update(_fresh_groups())
     return n_new, n_upd
