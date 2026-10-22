@@ -326,6 +326,94 @@ def _sheet_sync():
     st.caption(f"Datenablage: [Google Sheet]({gsheets.sheet_url()}) · {txt}")
 
 
+# ── Vergleich mit Boxplots ───────────────────────────────────────────────────
+_CMP_PARAMS = {
+    "Landeimpuls 0.25 s (g·s)": "Netto-Landeimpuls 0–0.25 s (g·s)",
+    "Peak roh (g)": "Peak roh (g)",
+    "Peak (g)": "Peak korrigiert (g)",
+    "Flugzeit (s)": "Flugzeit (s)",
+    "TTP (s)": "Time to Peak (s)",
+    "RFD (g/s)": "RFD (g/s)",
+}
+_CMP_GROUPS = ["Landungsart", "Athlet", "Athlet × Landungsart", "Ort", "Datum"]
+_ART_COLORS = {"vorwärts": "#4D4D4D", "switch": "#E3001B", "crash": "#F4A6AE", "ohne Angabe": "#BDBDBD"}
+
+
+def _compare_section(df_filtered: pd.DataFrame, df_eval: pd.DataFrame) -> None:
+    """Boxplot-Vergleich eines Kennwerts zwischen frei wählbaren Gruppen."""
+    import plotly.graph_objects as go
+    from scipy import stats
+
+    c1, c2, c3 = st.columns(3)
+    params = [p for p in _CMP_PARAMS if p in df_filtered.columns]
+    param = c1.selectbox("Kennwert", params, format_func=lambda p: _CMP_PARAMS[p], key="cmp_param")
+    group_by = c2.selectbox("Vergleichen nach", _CMP_GROUPS, key="cmp_group")
+    use_all = c3.checkbox("Auch ausgeschlossene Sprünge", value=False, key="cmp_all",
+                          help="Standard: nur Sprünge «In Auswertung» (Flugzeit ≥ 1.4 s, max. 3 pro Run).")
+    data = (df_filtered if use_all else df_eval).copy()
+    data[param] = pd.to_numeric(data[param], errors="coerce")
+    data = data.dropna(subset=[param])
+    if data.empty:
+        st.info("Keine Daten für diesen Kennwert mit den aktuellen Filtern.")
+        return
+    if group_by == "Athlet × Landungsart":
+        data["_grp"] = data["Athlet"].astype(str) + " · " + data["Landungsart"].astype(str)
+    else:
+        data["_grp"] = data[group_by].astype(str)
+
+    groups_all = sorted(data["_grp"].unique())
+    default = groups_all
+    if group_by == "Landungsart":
+        default = [g for g in ["vorwärts", "switch"] if g in groups_all] or groups_all
+    c4, c5 = st.columns([3, 1])
+    sel = c4.multiselect("Gruppen vergleichen", groups_all, default=default, key=f"cmp_sel_{group_by}")
+    show_pts = c5.checkbox("Einzelpunkte", value=True, key="cmp_pts")
+    data = data[data["_grp"].isin(sel)]
+    if data.empty:
+        st.info("Mindestens eine Gruppe auswählen.")
+        return
+
+    fig = go.Figure()
+    for g in sel:
+        vals = data.loc[data["_grp"] == g, param]
+        if vals.empty:
+            continue
+        art = g.split(" · ")[-1] if group_by in ("Landungsart", "Athlet × Landungsart") else None
+        color = _ART_COLORS.get(art, "#E3001B")
+        fig.add_trace(go.Box(y=vals, name=f"{g} (n={len(vals)})", marker_color=color, line_color=color,
+                             fillcolor="rgba(0,0,0,0)", boxpoints="all" if show_pts else False,
+                             jitter=0.35, pointpos=0, marker=dict(size=5, opacity=0.6), boxmean=False))
+    if param == "Peak roh (g)":
+        fig.add_hline(y=16, line_dash="dot", line_color="gray",
+                      annotation_text="Messgrenze 16 g", annotation_position="top left")
+    fig.update_layout(template="plotly_white", height=430, showlegend=False,
+                      yaxis_title=_CMP_PARAMS[param], margin=dict(l=10, r=10, t=30, b=10))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Kennwerte pro Gruppe
+    summ = data.groupby("_grp")[param].agg(n="count", Median="median",
+                                           Q1=lambda x: x.quantile(0.25), Q3=lambda x: x.quantile(0.75),
+                                           Mittelwert="mean", SD="std").reindex([g for g in sel if g in set(data["_grp"])])
+    summ.index.name = group_by
+    st.dataframe(summ.round(3), use_container_width=True)
+
+    # Statistischer Test (Orientierung)
+    samples = [data.loc[data["_grp"] == g, param].values for g in summ.index if (data["_grp"] == g).sum() >= 2]
+    if len(samples) == 2:
+        a, b = samples
+        u = stats.mannwhitneyu(a, b, alternative="two-sided")
+        t = stats.ttest_ind(a, b, equal_var=False)
+        sd_p = np.sqrt(((len(a) - 1) * a.var(ddof=1) + (len(b) - 1) * b.var(ddof=1)) / (len(a) + len(b) - 2))
+        d = (b.mean() - a.mean()) / sd_p if sd_p > 0 else np.nan
+        st.markdown(f"**Test {summ.index[0]} vs. {summ.index[1]}:** Mann-Whitney-U p = {u.pvalue:.3f} · "
+                    f"Welch-t-Test p = {t.pvalue:.3f} · Cohen's d = {d:.2f}")
+    elif len(samples) >= 3:
+        k = stats.kruskal(*samples)
+        st.markdown(f"**Kruskal-Wallis-Test über {len(samples)} Gruppen:** p = {k.pvalue:.3f}")
+    st.caption("Die Tests behandeln alle Sprünge als unabhängig und dienen nur zur Orientierung. "
+               "Für die Masterarbeit gilt das gemischte Modell mit Athlet als Zufallseffekt (Berechnungsprotokoll Kap. 8).")
+
+
 def show():
     st.header("Ergebnisse")
     _sheet_sync()
@@ -486,6 +574,11 @@ def show():
         summ = summ.rename(columns={"Peak_korr": "Ø Peak korr. (g)", "Peak_roh_Median": "Median Peak roh (g)",
                                     "Landeimpuls": "Ø Landeimpuls (g·s)", "Flugzeit": "Ø Flugzeit (s)", "Geclippt": "Geclippt (%)"})
         st.dataframe(summ.round(2), use_container_width=True, hide_index=True)
+
+    # ── Vergleich mit Boxplots ────────────────────────────────────────────
+    st.divider()
+    st.subheader("Vergleich mit Boxplots")
+    _compare_section(df_filtered, df_eval)
 
     # ── Durchschnittlicher Impact ─────────────────────────────────────────
     st.divider()
