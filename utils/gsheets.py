@@ -171,3 +171,31 @@ def save_gnss(df: pd.DataFrame) -> int:
 
 def sheet_url() -> str:
     return f"https://docs.google.com/spreadsheets/d/{st.secrets['sheet_id']}"
+
+
+VALIDATION_WS = "Validierung"
+
+
+def load_validation() -> pd.DataFrame:
+    """Validierungsdaten (IMU vs. Kraftmessplatte) aus dem Blatt «Validierung»; Zahlen werden zurückkonvertiert."""
+    df = pd.DataFrame(_worksheet(VALIDATION_WS).get_all_records())
+    if df.empty:
+        return df
+    df = df.replace({"": None})
+    for c in df.columns:
+        if c in ("athlete_id", "exercise"):
+            continue
+        conv = pd.to_numeric(df[c], errors="coerce")
+        if conv.notna().sum() >= max(1, int(0.8 * df[c].notna().sum())):
+            df[c] = conv
+    return df
+
+
+def save_validation(df: pd.DataFrame) -> int:
+    """Ersetzt das Blatt «Validierung» vollständig durch df. Gibt die Anzahl Zeilen zurück."""
+    df = df.copy().astype(object).where(df.notna(), "")
+    cols = [str(c) for c in df.columns]
+    ws = _worksheet(VALIDATION_WS)
+    ws.clear()
+    ws.update([cols] + df.values.tolist(), value_input_option="RAW")
+    return len(df)

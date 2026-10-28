@@ -71,7 +71,7 @@ def _load_from_upload(files) -> pd.DataFrame:
 
 def _scatter_with_regression(x, y, colors, title):
     r_val, p_val = pearsonr(x, y)
-    slope, intercept = np.polyfit(x, y)
+    slope, intercept = np.polyfit(x, y, 1)
     x_line = np.array([x.min(), x.max()])
     y_line = slope * x_line + intercept
 
@@ -131,7 +131,7 @@ def _bland_altman_chart(x, y):
 
 
 def _color_by_athlete(df_sub):
-    palette = {"Cyril": "#1a73e8", "Nils": "#e84040"}
+    palette = {"Cyril": "#1a73e8", "Nils": "#e84040", "Testperson 1": "#1a73e8", "Testperson 2": "#e84040"}
     if "athlete_id" in df_sub.columns:
         return [palette.get(a, "#888888") for a in df_sub["athlete_id"]]
     return ["#888888"] * len(df_sub)
@@ -222,21 +222,69 @@ def _render_sensor_tab(df_filtered, sensor_name, imu_col):
     }
 
 
+# Testpersonen werden in App und Datenablage nur anonym gezeigt
+_ANON = {"Cyril": "Testperson 1", "Nils": "Testperson 2"}
+
+
+def _anonymize(df: pd.DataFrame) -> pd.DataFrame:
+    if "athlete_id" in df.columns:
+        df = df.copy()
+        df["athlete_id"] = df["athlete_id"].replace(_ANON)
+    return df
+
+
+def _offer_sheet_save(df: pd.DataFrame) -> None:
+    """Button, um die Daten in die Datenablage (Google Sheet) zu übernehmen, damit die Online-App sie zeigt."""
+    try:
+        from utils import gsheets
+    except Exception:
+        return
+    if not gsheets.enabled():
+        return
+    if st.button("Validierungsdaten in der Datenablage speichern (für die Online-App)", key="val_save_sheet"):
+        try:
+            n = gsheets.save_validation(df)
+            st.session_state.pop("_val_sheet_df", None)
+            st.success(f"{n} Zeilen im Blatt «Validierung» gespeichert. Die Online-App zeigt sie ab jetzt automatisch.")
+        except Exception as e:
+            st.error(f"Speichern fehlgeschlagen: {e}")
+
+
+def _load_from_sheet() -> pd.DataFrame:
+    try:
+        from utils import gsheets
+        if not gsheets.enabled():
+            return pd.DataFrame()
+        if "_val_sheet_df" not in st.session_state:
+            st.session_state["_val_sheet_df"] = gsheets.load_validation()
+        return st.session_state["_val_sheet_df"]
+    except Exception as e:
+        st.warning(f"Datenablage nicht erreichbar: {e}")
+        return pd.DataFrame()
+
+
 def show():
     st.header("Validierung")
     st.caption("Kraftmessplatte (Referenz) vs. IMU-Sensoren")
 
+    df_all = pd.DataFrame()
+    source = ""
     if _VAL_DIR_EXISTS:
         try:
-            df_all = _load_from_paths()
+            df_all = _anonymize(_load_from_paths())
+            source = "local"
         except Exception as e:
             st.error(f"Fehler beim Laden der lokalen Daten: {e}")
-            return
-    else:
+    if df_all.empty:
+        df_all = _anonymize(_load_from_sheet())
+        if not df_all.empty:
+            source = "sheet"
+            st.caption(f"Quelle: Datenablage (Blatt «Validierung», {len(df_all)} Landungen).")
+    if df_all.empty:
         st.info(
-            "Lokale Validierungsdaten nicht gefunden. "
-            "Bitte 'Validierung Cyril.xlsx' und/oder 'Validierung Nils.xlsx' hochladen "
-            "(Sheet-Name: 'Validierung')."
+            "Noch keine Validierungsdaten in der Datenablage. "
+            "Bitte 'Validierung Cyril.xlsx' und 'Validierung Nils.xlsx' hochladen (Sheet-Name: 'Validierung') "
+            "und danach mit dem Button unten speichern – dann zeigt die App sie künftig automatisch."
         )
         uploaded = st.file_uploader(
             "Validierungs-Excel hochladen",
@@ -246,10 +294,13 @@ def show():
         )
         if not uploaded:
             return
-        df_all = _load_from_upload(uploaded)
+        df_all = _anonymize(_load_from_upload(uploaded))
         if df_all.empty:
             st.warning("Keine auswertbaren Daten in den hochgeladenen Dateien.")
             return
+        source = "upload"
+    if source in ("local", "upload"):
+        _offer_sheet_save(df_all)
 
     col_a, col_b = st.columns(2)
     athletes_avail = sorted(df_all["athlete_id"].dropna().unique().tolist()) if "athlete_id" in df_all.columns else []

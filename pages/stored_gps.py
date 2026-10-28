@@ -35,6 +35,9 @@ def _as_bool(v) -> bool:
     return True if v is None or v != v else bool(v)
 
 
+MAX_JUMP_OFF_TRACK_M = 150.0  # Landung weiter weg vom bereinigten Track = GPS-Fehler
+
+
 def show(mode: str = "map"):
     st.info("Keine GPS-Dateien hochgeladen – hier siehst du die **gespeicherten GPS-Daten** aus dem Google Sheet. "
             "Jeder Messtag hat seine eigene Karte.")
@@ -65,13 +68,17 @@ def show(mode: str = "map"):
         return
     for c in ["Lat", "Lon", "Höhe (m)", "Speed (km/h)", "Zeit (POSIX ms)"]:
         g_day[c] = pd.to_numeric(g_day[c], errors="coerce")
-    if st.checkbox("GPS-Ausreisser entfernen (> 100 km/h, Positions- und Höhensprünge)", value=True, key=f"sg_clean_{mode}"):
+    do_clean = st.checkbox("GPS-Ausreisser entfernen (Positions- und Höhensprünge, eingefrorene Werte, Lücken)",
+                           value=True, key=f"sg_clean_{mode}")
+    if do_clean:
         from utils.gnss_clean import clean_df
         n0 = len(g_day)
         g_day = clean_df(g_day, group="Athlet")
         if n0 - len(g_day):
             st.caption(f"{n0 - len(g_day)} von {n0} GPS-Punkten als Ausreisser entfernt.")
     g_day["_t"] = pd.to_datetime(g_day["Zeit (POSIX ms)"], unit="ms", utc=True).dt.tz_convert("Europe/Zurich")
+    from utils.gnss_clean import break_gaps
+    g_plot = break_gaps(g_day, group="Athlet") if do_clean else g_day   # Linien über Lücken unterbrechen
     color = {a: _COLORS[i % len(_COLORS)] for i, a in enumerate(aths)}
 
     # Sprungpositionen (aus Blatt «Kurven») mit Kennwerten (Blatt «Sprünge»)
@@ -92,6 +99,20 @@ def show(mode: str = "map"):
         jumps = jc.dropna(subset=["Lat Landung", "Lon Landung"])
     only_ok = st.checkbox("Nur Sprünge in der Auswertung", value=True, key=f"sg_ok_{mode}")
     jp = jumps[jumps["_ok"]] if (only_ok and not jumps.empty) else jumps
+    if do_clean and not jp.empty:
+        # Landungen ausblenden, deren GPS-Position weit neben dem bereinigten Track liegt
+        kx = 111320 * np.cos(np.radians(float(g_day["Lat"].median()))); ky = 110540
+        near = []
+        for _, j in jp.iterrows():
+            ga = g_day[g_day["Athlet"] == j["Athlet"]]
+            if ga.empty:
+                near.append(False); continue
+            dmin = np.min(np.hypot((ga["Lon"].values - j["Lon Landung"]) * kx, (ga["Lat"].values - j["Lat Landung"]) * ky))
+            near.append(dmin <= MAX_JUMP_OFF_TRACK_M)
+        n_off = len(jp) - int(np.sum(near))
+        jp = jp[np.array(near, bool)]
+        if n_off:
+            st.caption(f"{n_off} Landung(en) ausgeblendet, weil ihre GPS-Position mehr als {MAX_JUMP_OFF_TRACK_M:.0f} m neben dem bereinigten Track liegt.")
 
     m1, m2, m3 = st.columns(3)
     m1.metric("Athleten", len(sel)); m2.metric("GPS-Punkte", f"{len(g_day):,}".replace(",", "'"))
@@ -100,7 +121,7 @@ def show(mode: str = "map"):
     # ── Karte ────────────────────────────────────────────────────────────
     fig = go.Figure()
     for a in sel:
-        ga = g_day[g_day["Athlet"] == a].sort_values("Zeit (POSIX ms)")
+        ga = g_plot[g_plot["Athlet"] == a]
         fig.add_trace(go.Scattermap(lat=ga["Lat"], lon=ga["Lon"], mode="lines", line=dict(width=2, color=color[a]),
                                     name=f"A{a}", hovertext=[f"A{a} · {t:%H:%M:%S} · {v:.0f} km/h" for t, v in zip(ga["_t"], ga["Speed (km/h)"].fillna(0))],
                                     hoverinfo="text"))
@@ -122,7 +143,7 @@ def show(mode: str = "map"):
     # ── Höhenprofil + Geschwindigkeit ────────────────────────────────────
     fh = go.Figure(); fs = go.Figure()
     for a in sel:
-        ga = g_day[g_day["Athlet"] == a].sort_values("Zeit (POSIX ms)")
+        ga = g_plot[g_plot["Athlet"] == a]
         fh.add_trace(go.Scatter(x=ga["_t"], y=ga["Höhe (m)"], mode="lines", line=dict(color=color[a], width=1.3), name=f"A{a}"))
         fs.add_trace(go.Scatter(x=ga["_t"], y=ga["Speed (km/h)"], mode="lines", line=dict(color=color[a], width=1), name=f"A{a}"))
     if not jp.empty and "Zeit Landung (POSIX ms)" in jp.columns and mode == "map":
