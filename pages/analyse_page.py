@@ -270,6 +270,7 @@ def _find_protocol_run(protocol_df: pd.DataFrame, meta, run_meta: dict,
         return None
 
 
+LANDING_WINDOW_S = 0.25  # fixed window for the net landing impulse (see thesis, ch. 2.4)
 CARD_W = 300   # px pro Sprung-Karte im Scroller
 CARD_H = 320   # px Höhe der Karte
 
@@ -310,7 +311,9 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
         suspicious = flight < FLIGHT_MIN_S or peak < PEAK_MIN_G
         excluded = not bool(row.get("plausible", True))
-        title_txt = (f"{'✕ ' if excluded else '⚠ ' if suspicious else ''}{jid}  {peak:.1f}g  {flight:.2f}s"
+        li_val = pd.to_numeric(pd.Series([row.get("landing_impulse_025_g_s")]), errors="coerce").iloc[0]
+        li_txt = f"  LI {li_val:.2f} g·s" if pd.notna(li_val) else ""
+        title_txt = (f"{'✕ ' if excluded else '⚠ ' if suspicious else ''}{jid}  {peak:.1f}g  {flight:.2f}s{li_txt}"
                      f"{'  (!)' if clipped else ''}"
                      f"{'  – nicht in Auswertung' if excluded else ''}")
         lt_label  = lt if lt else "—"
@@ -328,6 +331,17 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
             mode="markers", marker=dict(size=10, color=color, symbol="triangle-down"),
             showlegend=False,
         ))
+        # Netto-Landeimpuls: Fläche über 1 g von Landung bis Landung + 0.25 s
+        li0 = int(row["landing_idx"])
+        li1 = min(len(t_all) - 1, li0 + int(round(LANDING_WINDOW_S * 200)))
+        if li1 > li0:
+            t_li = t_all[li0:li1 + 1].tolist()
+            a_li = np.maximum(acc_arr[li0:li1 + 1], 1.0).tolist()
+            fig.add_trace(go.Scatter(x=t_li, y=[1.0] * len(t_li), mode="lines",
+                                     line=dict(width=0), hoverinfo="skip", showlegend=False))
+            fig.add_trace(go.Scatter(x=t_li, y=a_li, mode="lines", line=dict(width=0),
+                                     fill="tonexty", fillcolor="rgba(227,0,27,0.18)",
+                                     hoverinfo="skip", showlegend=False))
         # 1g Flugschwelle
         fig.add_hline(y=1, line_dash="dot", line_color="gray", line_width=1,
                       annotation_text="1g (Flug)", annotation_position="right",

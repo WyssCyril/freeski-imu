@@ -586,6 +586,40 @@ def _compare_section(df_filtered: pd.DataFrame, df_eval: pd.DataFrame) -> None:
                "Für die Masterarbeit gilt das gemischte Modell mit Athlet als Zufallseffekt (Berechnungsprotokoll Kap. 8).")
 
 
+def _load_section(df_eval: pd.DataFrame) -> None:
+    """Sum of the net landing impulse per athlete and session (and per run)."""
+    import plotly.graph_objects as go
+    col = "Landeimpuls 0.25 s (g·s)"
+    if df_eval.empty or col not in df_eval.columns:
+        st.info("Keine Sprünge mit Landeimpuls in der Auswertung.")
+        return
+    d = df_eval.assign(_li=pd.to_numeric(df_eval[col], errors="coerce")).dropna(subset=["_li"])
+    if d.empty:
+        st.info("Keine Sprünge mit Landeimpuls in der Auswertung.")
+        return
+    keys = [k for k in ["Athlet", "Datum", "Ort"] if k in d.columns]
+    sess = d.groupby(keys, sort=True).agg(
+        Sprünge=("_li", "count"), Summe=("_li", "sum"), Mittel=("_li", "mean"), Max=("_li", "max")).reset_index()
+    if "Run" in d.columns:
+        runs = d.groupby(keys + ["Run"])["_li"].sum().groupby(level=list(range(len(keys)))).agg(["count", "mean"])
+        runs.columns = ["Runs", "Ø pro Run"]
+        sess = sess.merge(runs.reset_index(), on=keys, how="left")
+    sess = sess.rename(columns={"Summe": "Σ Landeimpuls (g·s)", "Mittel": "Ø pro Sprung (g·s)",
+                                "Max": "Max. Sprung (g·s)", "Ø pro Run": "Ø pro Run (g·s)"})
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Σ Landeimpuls (g·s)", f"{d['_li'].sum():.1f}")
+    c2.metric("Ø pro Sprung (g·s)", f"{d['_li'].mean():.2f}")
+    c3.metric("Einheiten", len(sess))
+    label = sess[keys].astype(str).agg(" · ".join, axis=1)
+    fig = go.Figure(go.Bar(x=label, y=sess["Σ Landeimpuls (g·s)"], marker_color="#E3001B",
+                           text=sess["Sprünge"].astype(str) + " Sprünge", textposition="outside",
+                           hovertemplate="%{x}<br>Σ %{y:.2f} g·s<extra></extra>"))
+    fig.update_layout(template="plotly_white", height=360, margin=dict(l=40, r=10, t=20, b=80),
+                      yaxis_title="Σ Netto-Landeimpuls (g·s)", xaxis_tickangle=-30)
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(sess.round(2), use_container_width=True, hide_index=True)
+
+
 def show():
     st.header("Ergebnisse")
     _sheet_sync()
@@ -751,6 +785,13 @@ def show():
     st.divider()
     st.subheader("Vergleich mit Boxplots")
     _compare_section(df_filtered, df_eval)
+
+    # ── Belastung pro Trainingseinheit (Netto-Landeimpuls) ─────────────────
+    st.divider()
+    st.subheader("Belastung pro Trainingseinheit")
+    st.caption("Summe des Netto-Landeimpulses 0–0.25 s aller Sprünge in der Auswertung. "
+               "Der Landeimpuls ist robuster als der Peak und kaum vom Clipping bei 16 g betroffen.")
+    _load_section(df_eval)
 
     # ── Durchschnittlicher Impact ─────────────────────────────────────────
     st.divider()
