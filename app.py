@@ -70,7 +70,7 @@ header[data-testid="stHeader"] { background: transparent; height: 0; }
 
 /* Header band */
 .swiss-header {
-    font-family: 'Cera Pro', 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Figtree', 'Helvetica Neue', Arial, sans-serif;
     background:
         radial-gradient(ellipse 520px 260px at 84% 55%, rgba(226,0,26,0.16), rgba(226,0,26,0) 70%),
         var(--ss-bg-head);
@@ -86,7 +86,7 @@ header[data-testid="stHeader"] { background: transparent; height: 0; }
     gap: 24px;
 }
 .swiss-header h1 {
-    font-family: 'Cera Pro', 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Figtree', 'Helvetica Neue', Arial, sans-serif;
     color: var(--ss-ink);
     font-size: 2.1rem;
     font-weight: 800;
@@ -105,7 +105,7 @@ header[data-testid="stHeader"] { background: transparent; height: 0; }
 
 /* Main navigation: uppercase text tabs with red underline */
 .st-key-active_tab {
-    font-family: 'Cera Pro', 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Figtree', 'Helvetica Neue', Arial, sans-serif;
     background: var(--ss-bg-nav);
     border-bottom: 1px solid var(--ss-line);
     margin-top: -1rem;

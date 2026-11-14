@@ -1,7 +1,7 @@
 """
 Swiss-Ski corporate design for the dashboards (Swiss-Ski STUDIOS brand portal, primary colour world).
 
-Only look and feel: colours, logo, font. No calculation depends on this module.
+Only look and feel: colours, logo, font (Figtree as free stand-in for Cera Pro). No calculation depends on this module.
 The same file is used in freeski-imu, snowboard-halfpipe-imu and corvatsch-imu.
 
 Rule from the brand portal: never Snow White on Ice Blue – on Ice Blue only Alps Grey.
@@ -39,7 +39,7 @@ SEQ = [RED, ALPS_GREY, ICE_BLUE, DARK_RED, GREY_LIGHT, RED_TINT, ICE_DARK, MIDDL
 SCALE_RED = [[0.0, RED_LIGHT], [0.5, RED], [1.0, DARK_RED]]
 SCALE_SPEED = [[0.0, ICE_DARK], [0.35, ICE_BLUE], [0.65, RED], [1.0, DARK_RED]]  # slow = blue, fast = red
 
-FONT_FAMILY = "'Cera Pro', 'Helvetica Neue', Arial, sans-serif"
+FONT_FAMILY = "'Figtree', 'Helvetica Neue', Arial, sans-serif"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(_HERE, "..", "static")
@@ -54,21 +54,23 @@ def logo_uri(variant: str = "red") -> str:
 
 @functools.lru_cache(maxsize=None)
 def font_css() -> str:
-    """@font-face rules for Cera Pro (woff2, Latin subset) as embedded data URIs."""
+    """@font-face rules for Figtree (woff2, Latin subset) as embedded data URIs.
+    Figtree is free (SIL Open Font License 1.1, static/fonts/OFL.txt) and close to the brand font Cera Pro,
+    which is licensed and therefore not shipped with the dashboards."""
     rules = []
     for name, weight in [("Regular", 400), ("Medium", 500), ("Bold", 700), ("Black", 900)]:
-        path = os.path.join(_STATIC, "fonts", f"CeraPro-{name}.woff2")
+        path = os.path.join(_STATIC, "fonts", f"Figtree-{name}.woff2")
         if not os.path.exists(path):
             continue
         with open(path, "rb") as fh:
             b64 = base64.b64encode(fh.read()).decode()
-        rules.append("@font-face{font-family:'Cera Pro';font-style:normal;font-display:swap;"
+        rules.append("@font-face{font-family:'Figtree';font-style:normal;font-display:swap;"
                      f"font-weight:{weight};src:url(data:font/woff2;base64,{b64}) format('woff2');}}")
     return "\n".join(rules)
 
 
 def base_css() -> str:
-    """Font faces plus the Cera Pro font for the whole Streamlit page."""
+    """Font faces plus the Figtree font for the whole Streamlit page."""
     return (font_css() + "\n"
             f"html, body, [class*='st-'], .stMarkdown, .stMetric, button, input, textarea, select, "
             f"h1, h2, h3, h4, h5, h6, p, label {{ font-family: {FONT_FAMILY} !important; }}\n"
