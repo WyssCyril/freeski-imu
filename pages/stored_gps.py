@@ -8,7 +8,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from utils import gsheets
 
-_COLORS = ["#E3001B", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#17becf", "#7f7f7f", "#bcbd22", "#e377c2"]
+_COLORS = ["#E2001A", "#3E3E3E", "#39C3D4", "#9E9E9E", "#8B0E13", "#C00418", "#6E6E6E", "#9E9E9E", "#1E8A97", "#F28C96"]
 
 
 @st.cache_data(ttl=120, show_spinner="Lade gespeicherte GPS-Daten…")
@@ -129,7 +129,7 @@ def show(mode: str = "map"):
         size = (pd.to_numeric(jp.get("Peak roh (g)"), errors="coerce").fillna(8) / 25 * 18 + 7).clip(7, 25)
         fig.add_trace(go.Scattermap(
             lat=jp["Lat Landung"], lon=jp["Lon Landung"], mode="markers", name="Landungen",
-            marker=dict(size=size, color=["#000000" if ok else "#BDBDBD" for ok in jp["_ok"]], opacity=0.8),
+            marker=dict(size=size, color=["#3E3E3E" if ok else "#BDBDBD" for ok in jp["_ok"]], opacity=0.8),
             customdata=np.stack([jp["Athlet"], jp["Run"], jp["Sprung"], pd.to_numeric(jp.get("Peak roh (g)"), errors="coerce").round(1),
                                  pd.to_numeric(jp.get("Flugzeit (s)"), errors="coerce").round(2), jp.get("Landungsart", "").fillna("")], axis=1),
             hovertemplate="A%{customdata[0]} · %{customdata[1]} · %{customdata[2]}<br>Peak %{customdata[3]} g · Flug %{customdata[4]} s · %{customdata[5]}<extra></extra>"))
@@ -149,7 +149,7 @@ def show(mode: str = "map"):
     if not jp.empty and "Zeit Landung (POSIX ms)" in jp.columns and mode == "map":
         tj = pd.to_datetime(jp["Zeit Landung (POSIX ms)"], unit="ms", utc=True).dt.tz_convert("Europe/Zurich")
         fh.add_trace(go.Scatter(x=tj, y=jp["Höhe Landung (m)"], mode="markers", name="Landungen",
-                                marker=dict(size=7, color="#000000", symbol="triangle-down")))
+                                marker=dict(size=7, color="#3E3E3E", symbol="triangle-down")))
     fh.update_layout(template="plotly_white", height=320, yaxis_title="Höhe (m ü. M.)", margin=dict(l=10, r=10, t=30, b=10), title="Höhenprofil")
     fs.update_layout(template="plotly_white", height=280, yaxis_title="Geschwindigkeit (km/h)", margin=dict(l=10, r=10, t=30, b=10), title="Geschwindigkeit")
     st.plotly_chart(fh, use_container_width=True, key=f"sg_alt_{mode}")

@@ -508,7 +508,7 @@ _CMP_PARAMS = {
     "RFD (g/s)": "RFD (g/s)",
 }
 _CMP_GROUPS = ["Landungsart", "Athlet", "Athlet × Landungsart", "Ort", "Datum"]
-_ART_COLORS = {"vorwärts": "#4D4D4D", "switch": "#E3001B", "crash": "#F4A6AE", "ohne Angabe": "#BDBDBD"}
+_ART_COLORS = {"vorwärts": "#3E3E3E", "switch": "#E2001A", "crash": "#F28C96", "ohne Angabe": "#BDBDBD"}
 
 
 def _compare_section(df_filtered: pd.DataFrame, df_eval: pd.DataFrame) -> None:
@@ -551,7 +551,7 @@ def _compare_section(df_filtered: pd.DataFrame, df_eval: pd.DataFrame) -> None:
         if vals.empty:
             continue
         art = g.split(" · ")[-1] if group_by in ("Landungsart", "Athlet × Landungsart") else None
-        color = _ART_COLORS.get(art, "#E3001B")
+        color = _ART_COLORS.get(art, "#E2001A")
         fig.add_trace(go.Box(y=vals, name=f"{g} (n={len(vals)})", marker_color=color, line_color=color,
                              fillcolor="rgba(0,0,0,0)", boxpoints="all" if show_pts else False,
                              jitter=0.35, pointpos=0, marker=dict(size=5, opacity=0.6), boxmean=False))
@@ -611,7 +611,7 @@ def _load_section(df_eval: pd.DataFrame) -> None:
     c2.metric("Ø pro Sprung (g·s)", f"{d['_li'].mean():.2f}")
     c3.metric("Einheiten", len(sess))
     label = sess[keys].astype(str).agg(" · ".join, axis=1)
-    fig = go.Figure(go.Bar(x=label, y=sess["Σ Landeimpuls (g·s)"], marker_color="#E3001B",
+    fig = go.Figure(go.Bar(x=label, y=sess["Σ Landeimpuls (g·s)"], marker_color="#E2001A",
                            text=sess["Sprünge"].astype(str) + " Sprünge", textposition="outside",
                            hovertemplate="%{x}<br>Σ %{y:.2f} g·s<extra></extra>"))
     fig.update_layout(template="plotly_white", height=360, margin=dict(l=40, r=10, t=20, b=80),
