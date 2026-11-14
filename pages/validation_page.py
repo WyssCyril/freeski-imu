@@ -85,7 +85,7 @@ def _scatter_with_regression(x, y, colors, title):
     fig.add_trace(go.Scatter(
         x=x_line, y=y_line,
         mode="lines",
-        line=dict(color="#555555", width=2, dash="dash"),
+        line=dict(color="#6E6E6E", width=2, dash="dash"),
         name="Regressionsgerade",
     ))
     p_str = f"{p_val:.4f}" if p_val >= 0.0001 else "< 0.0001"
@@ -115,11 +115,11 @@ def _bland_altman_chart(x, y):
         marker=dict(size=7, opacity=0.75),
         name="Differenz",
     ))
-    fig.add_hline(y=bias, line_color="#1a73e8", line_width=2,
+    fig.add_hline(y=bias, line_color="#39C3D4", line_width=2,
                   annotation_text=f"Bias: {bias:.3f} g", annotation_position="top right")
-    fig.add_hline(y=loa_upper, line_color="#e84040", line_width=1.5, line_dash="dash",
+    fig.add_hline(y=loa_upper, line_color="#E2001A", line_width=1.5, line_dash="dash",
                   annotation_text=f"+1.96 SD: {loa_upper:.3f} g", annotation_position="top right")
-    fig.add_hline(y=loa_lower, line_color="#e84040", line_width=1.5, line_dash="dash",
+    fig.add_hline(y=loa_lower, line_color="#E2001A", line_width=1.5, line_dash="dash",
                   annotation_text=f"-1.96 SD: {loa_lower:.3f} g", annotation_position="bottom right")
     fig.update_layout(
         title="Bland-Altman (IMU - KMP)",
@@ -131,10 +131,10 @@ def _bland_altman_chart(x, y):
 
 
 def _color_by_athlete(df_sub):
-    palette = {"Cyril": "#1a73e8", "Nils": "#e84040", "Testperson 1": "#1a73e8", "Testperson 2": "#e84040"}
+    palette = {"Cyril": "#39C3D4", "Nils": "#E2001A", "Testperson 1": "#39C3D4", "Testperson 2": "#E2001A"}
     if "athlete_id" in df_sub.columns:
-        return [palette.get(a, "#888888") for a in df_sub["athlete_id"]]
-    return ["#888888"] * len(df_sub)
+        return [palette.get(a, "#9E9E9E") for a in df_sub["athlete_id"]]
+    return ["#9E9E9E"] * len(df_sub)
 
 
 def _render_sensor_tab(df_filtered, sensor_name, imu_col):

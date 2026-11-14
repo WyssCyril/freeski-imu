@@ -83,14 +83,14 @@ def plot_bland_altman(ba: dict, title: str = "",
     # Scatter: normale Punkte
     fig.add_trace(go.Scatter(
         x=mean[~outlier_mask], y=diff[~outlier_mask],
-        mode="markers", marker=dict(color="#1f77b4", size=7, opacity=0.7),
+        mode="markers", marker=dict(color="#3E3E3E", size=7, opacity=0.7),
         name="Messpunkte",
     ))
     # Outlier
     if outlier_mask.any():
         fig.add_trace(go.Scatter(
             x=mean[outlier_mask], y=diff[outlier_mask],
-            mode="markers", marker=dict(color="#d62728", size=9, symbol="x"),
+            mode="markers", marker=dict(color="#E2001A", size=9, symbol="x"),
             name="Ausreisser",
         ))
 
@@ -104,15 +104,15 @@ def plot_bland_altman(ba: dict, title: str = "",
 
     # LoA
     for loa, sign in [(loa_upper, "+"), (loa_lower, "−")]:
-        fig.add_hline(y=loa, line_color="#ff7f0e", line_dash="dash",
+        fig.add_hline(y=loa, line_color="#8B0E13", line_dash="dash",
                       annotation_text=f"{sign}1.96 SD = {loa:.3f}")
         fig.add_hrect(y0=loa - ci_loa, y1=loa + ci_loa,
-                      fillcolor="#ff7f0e", opacity=0.10, line_width=0)
+                      fillcolor="#8B0E13", opacity=0.10, line_width=0)
 
     # Warn/Ausschluss-Schwellen
     for y_abs, color, label in [
-        (warn_abs, "#f0a500", f"Warnschwelle {warn_pct}%"),
-        (excl_abs, "#d62728", f"Ausschluss {excl_pct}%"),
+        (warn_abs, "#8B0E13", f"Warnschwelle {warn_pct}%"),
+        (excl_abs, "#E2001A", f"Ausschluss {excl_pct}%"),
     ]:
         for sign in [1, -1]:
             fig.add_hline(y=sign * y_abs, line_color=color, line_dash="dot",
@@ -126,7 +126,7 @@ def plot_bland_altman(ba: dict, title: str = "",
     fig.add_trace(go.Scatter(
         x=x_arr, y=y_trend,
         mode="lines",
-        line=dict(color="#9467bd", dash="dot", width=1.5),
+        line=dict(color="#9E9E9E", dash="dot", width=1.5),
         name=f"Trend (p={p_trend_str})",
     ))
 
@@ -149,12 +149,12 @@ def plot_correlation(x: np.ndarray, y: np.ndarray,
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=x, y=y, mode="markers",
-        marker=dict(color="#1f77b4", size=7, opacity=0.7),
+        marker=dict(color="#3E3E3E", size=7, opacity=0.7),
         name="Messpunkte",
     ))
     fig.add_trace(go.Scatter(
         x=x_range, y=slope * x_range + intercept,
-        mode="lines", line=dict(color="#ff7f0e"), name=f"Regression (r={r:.3f})",
+        mode="lines", line=dict(color="#8B0E13"), name=f"Regression (r={r:.3f})",
     ))
     fig.add_trace(go.Scatter(
         x=x_range, y=x_range,

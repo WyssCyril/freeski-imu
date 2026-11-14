@@ -8,7 +8,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from utils import gsheets
 
-_ART_COLORS = {"vorwärts": "#2ca02c", "switch": "#ff7f0e", "crash": "#d62728"}
+_ART_COLORS = {"vorwärts": "#39C3D4", "switch": "#8B0E13", "crash": "#E2001A"}
 
 
 @st.cache_data(ttl=120, show_spinner="Lade gespeicherte Sprünge…")
@@ -36,14 +36,14 @@ def _curve_fig(cur: pd.Series, title: str, color: str, excluded: bool) -> go.Fig
     fs = float(cur.get("Abtastrate (Hz)", 200) or 200)
     t = float(cur["Start (s rel. Landung)"]) + np.arange(len(vals)) / fs
     to, pk = float(cur["Absprung (s rel. Landung)"]), float(cur["Peak (s rel. Landung)"])
-    fig = go.Figure(go.Scatter(x=t, y=vals, mode="lines", line=dict(color="#1f77b4", width=1.2), showlegend=False))
+    fig = go.Figure(go.Scatter(x=t, y=vals, mode="lines", line=dict(color="#3E3E3E", width=1.2), showlegend=False))
     fig.add_vrect(x0=to, x1=0, fillcolor="lightblue", opacity=0.18, line_width=0)
     fig.add_vrect(x0=0, x1=0.25, fillcolor="gray", opacity=0.10, line_width=0)
     i_pk = int(np.argmin(np.abs(t - pk)))
     fig.add_trace(go.Scatter(x=[t[i_pk]], y=[vals[i_pk]], mode="markers", showlegend=False,
                              marker=dict(size=10, color=color, symbol="triangle-down")))
     fig.add_hline(y=1, line_dash="dot", line_color="gray", line_width=1)
-    fig.add_hline(y=16, line_dash="dot", line_color="#E3001B", line_width=1)
+    fig.add_hline(y=16, line_dash="dot", line_color="#E2001A", line_width=1)
     fig.update_layout(title=dict(text=title, font=dict(size=12, color="#999" if excluded else None)),
                       height=260, margin=dict(l=10, r=10, t=36, b=10), template="plotly_white",
                       xaxis_title="Zeit rel. Landung (s)", yaxis_title="accRes (g)")
@@ -173,5 +173,5 @@ def show():
                 site = j.get("Absprungstelle", "")
                 title = (f"{'✕ ' if not j['_ok'] else ''}{j['Sprung']}  {float(j['Peak roh (g)']):.1f} g  "
                          f"{float(j['Flugzeit (s)']):.2f} s  {art or ''}" + (f"  · {site}" if site and site != "–" else ""))
-                fig = _curve_fig(cr.loc[j["Sprung"]], title, _ART_COLORS.get(art, "#d62728"), not j["_ok"])
+                fig = _curve_fig(cr.loc[j["Sprung"]], title, _ART_COLORS.get(art, "#E2001A"), not j["_ok"])
                 cols[i % 3].plotly_chart(fig, use_container_width=True, key=f"sv_{run}_{j['Sprung']}")

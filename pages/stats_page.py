@@ -21,7 +21,7 @@ PARAMS = {
 
 def _boxplot(data_dict: dict, param: str, title: str, show_points: bool = True) -> go.Figure:
     """Boxplot mit einem Trace pro Gruppe."""
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+    colors = ["#3E3E3E", "#8B0E13", "#39C3D4", "#E2001A", "#9E9E9E"]
     fig = go.Figure()
     for i, (name, vals) in enumerate(data_dict.items()):
         if len(vals) == 0:

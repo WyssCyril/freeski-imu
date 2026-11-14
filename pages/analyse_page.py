@@ -186,18 +186,18 @@ def _plot_run(df_imu: pd.DataFrame, jumps_df: pd.DataFrame | None,
                         subplot_titles=["accRes [g]", f"Vertikale Achse ({axis_vert})"],
                         vertical_spacing=0.08)
     t_res, y_res = _decimate(np.asarray(t), np.asarray(acc_res, dtype=float))
-    fig.add_trace(go.Scatter(x=t_res, y=y_res, line=dict(color="#1f77b4", width=0.8),
+    fig.add_trace(go.Scatter(x=t_res, y=y_res, line=dict(color="#3E3E3E", width=0.8),
                              name="accRes [g]"), row=1, col=1)
     fig.add_hline(y=16, line_dash="dot", line_color="red",
                   annotation_text="16g Limit", row=1, col=1)
     t_v, y_v = _decimate(np.asarray(t), np.asarray(acc_vert, dtype=float))
-    fig.add_trace(go.Scatter(x=t_v, y=y_v, line=dict(color="#2ca02c", width=0.8),
+    fig.add_trace(go.Scatter(x=t_v, y=y_v, line=dict(color="#39C3D4", width=0.8),
                              name=axis_vert), row=2, col=1)
 
     if jumps_df is not None and not jumps_df.empty:
         for _, row in jumps_df.iterrows():
             lt = row.get("landing_type", "")
-            color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
+            color = "#39C3D4" if lt == "vorwärts" else "#8B0E13" if lt == "switch" else "#E2001A"
 
             def safe_t(idx_val):
                 idx = min(int(idx_val), len(t) - 1)
@@ -308,7 +308,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         to_t   = float(t_all[min(int(row["takeoff_idx"]),  len(t_all)-1)])
         la_t   = float(t_all[min(int(row["landing_idx"]),  len(t_all)-1)])
 
-        color = "#2ca02c" if lt == "vorwärts" else "#ff7f0e" if lt == "switch" else "#d62728"
+        color = "#39C3D4" if lt == "vorwärts" else "#8B0E13" if lt == "switch" else "#E2001A"
         suspicious = flight < FLIGHT_MIN_S or peak < PEAK_MIN_G
         excluded = not bool(row.get("plausible", True))
         li_val = pd.to_numeric(pd.Series([row.get("landing_impulse_025_g_s")]), errors="coerce").iloc[0]
@@ -321,7 +321,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=t_seg.tolist(), y=acc_seg.tolist(),
-            mode="lines", line=dict(color="#1f77b4", width=1.2), showlegend=False,
+            mode="lines", line=dict(color="#3E3E3E", width=1.2), showlegend=False,
         ))
         # Flugphase markieren
         fig.add_vrect(x0=to_t, x1=la_t, fillcolor="lightblue", opacity=0.18, line_width=0)
@@ -340,7 +340,7 @@ def _jump_scroller(df_imu: pd.DataFrame, jumps_df: pd.DataFrame,
             fig.add_trace(go.Scatter(x=t_li, y=[1.0] * len(t_li), mode="lines",
                                      line=dict(width=0), hoverinfo="skip", showlegend=False))
             fig.add_trace(go.Scatter(x=t_li, y=a_li, mode="lines", line=dict(width=0),
-                                     fill="tonexty", fillcolor="rgba(227,0,27,0.18)",
+                                     fill="tonexty", fillcolor="rgba(226,0,26,0.18)",
                                      hoverinfo="skip", showlegend=False))
         # 1g Flugschwelle
         fig.add_hline(y=1, line_dash="dot", line_color="gray", line_width=1,
@@ -613,11 +613,11 @@ def _render_run(cache_key: str, sess_id: str, run_id: str,
 
 # Farbe pro Sensorposition
 POSITION_COLORS = {
-    "Körperschwerpunkt (Bauch)": "#1f77b4",   # blau
-    "Fuss rechts":               "#2ca02c",   # grün
-    "Fuss links":                "#ff7f0e",   # orange
+    "Körperschwerpunkt (Bauch)": "#3E3E3E",   # blau
+    "Fuss rechts":               "#39C3D4",   # grün
+    "Fuss links":                "#8B0E13",   # orange
 }
-_FALLBACK_COLORS = ["#9467bd", "#8c564b", "#e377c2", "#17becf"]
+_FALLBACK_COLORS = ["#9E9E9E", "#C00418", "#F28C96", "#6E6E6E"]
 
 
 def _pos_color(position_label: str, idx: int = 0) -> str:
@@ -1051,19 +1051,19 @@ def show():
                     t_sp, y_sp = _decimate(t_gnss, gnss_sess["speedRes [m/s]"].values.astype(float), 10000)
                     fig_ov.add_trace(go.Scatter(
                         x=t_sp, y=y_sp,
-                        line=dict(color="#1f77b4", width=1.0), name="Speed", showlegend=False,
+                        line=dict(color="#3E3E3E", width=1.0), name="Speed", showlegend=False,
                     ), row=2, col=1)
                     if "altitude [m]" in gnss_sess.columns:
                         t_al, y_al = _decimate(t_gnss, gnss_sess["altitude [m]"].values.astype(float), 10000)
                         fig_ov.add_trace(go.Scatter(
                             x=t_al, y=y_al,
-                            line=dict(color="#2ca02c", width=1.0), name="Höhe", showlegend=False,
+                            line=dict(color="#39C3D4", width=1.0), name="Höhe", showlegend=False,
                             fill="tozeroy", fillcolor="rgba(44,160,44,0.08)",
                         ), row=3, col=1)
 
                 # Run-Markierungen in alle Subplots
-                run_colors = ["#1f77b4", "#ff7f0e", "#d62728", "#9467bd",
-                              "#8c564b", "#e377c2", "#17becf", "#bcbd22"]
+                run_colors = ["#3E3E3E", "#8B0E13", "#E2001A", "#9E9E9E",
+                              "#C00418", "#F28C96", "#6E6E6E", "#1E8A97"]
                 for r_idx, (rid, run_meta) in enumerate(runs_with_meta):
                     rcolor   = run_colors[r_idx % len(run_colors)]
                     start_us = run_meta.get("start_time_us")
